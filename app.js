@@ -19,6 +19,7 @@
     study: {}, studyDays: {}, myTerms: [],
     interests: [], read: {},
     vision: '', why: { job: '', note: '', music: '', study: '' },
+    deleted: {}, settingsAt: 0,
   });
 
   let S = load();
@@ -33,9 +34,168 @@
     } catch (e) { /* 保存が使えない環境でも表示はできる */ }
     return blank();
   }
-  function save() {
+  function saveLocal() {
     try { localStorage.setItem(KEY, JSON.stringify(S)); }
     catch (e) { toast('保存できませんでした。ブラウザでサイトデータの保存が許可されているか確認してください。'); }
+  }
+  let syncTimer;
+  function save() {
+    saveLocal();
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => syncNow(), 4000);
+  }
+  const markDeleted = id => { S.deleted = { ...S.deleted, [id]: Date.now() }; };
+
+  // ── 同期 ──
+  // GitHub の非公開リポジトリに、合言葉から作った鍵で暗号化（AES-GCM）して1ファイルで保存する。
+  // 両方の端末で変更があったときは、記録を id ごとに突き合わせて合体させる。
+  const SYNC_KEY = 'tsumiage.sync';
+  const SYNC_PATH = 'tsumiage-data.json';
+  const SETTING_KEYS = ['mainLabel', 'goals', 'facts', 'links', 'interests', 'vision', 'why'];
+  let sync = (() => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch (e) { return {}; } })();
+  const syncReady = () => Boolean(sync.owner && sync.repo && sync.token && sync.pass);
+  const saveSync = () => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) { /* 無視 */ } };
+  const te = new TextEncoder(), td = new TextDecoder();
+  const toB64 = bytes => { let str = ''; for (let i = 0; i < bytes.length; i += 0x8000) str += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(str); };
+  const fromB64 = b64 => Uint8Array.from(atob(b64.replace(/\s/g, '')), c => c.charCodeAt(0));
+  class SyncError extends Error { constructor(kind, status) { super(kind); this.kind = kind; this.status = status; } }
+
+  let keyCache = null;
+  async function deriveKey(saltB64) {
+    const id = `${sync.pass}|${saltB64}`;
+    if (keyCache && keyCache.id === id) return keyCache.key;
+    const base = await crypto.subtle.importKey('raw', te.encode(sync.pass), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: fromB64(saltB64), iterations: 250000, hash: 'SHA-256' },
+      base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    keyCache = { id, key };
+    return key;
+  }
+  async function encryptState(obj) {
+    if (!sync.salt) { sync.salt = toB64(crypto.getRandomValues(new Uint8Array(16))); saveSync(); }
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await deriveKey(sync.salt), te.encode(JSON.stringify(obj)));
+    return { v: 1, salt: sync.salt, iv: toB64(iv), data: toB64(new Uint8Array(ct)) };
+  }
+  async function decryptState(file) {
+    try {
+      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(file.iv) }, await deriveKey(file.salt), fromB64(file.data));
+      if (sync.salt !== file.salt) { sync.salt = file.salt; saveSync(); }
+      return { ...blank(), ...JSON.parse(td.decode(pt)) };
+    } catch (e) { throw new SyncError('pass'); }
+  }
+
+  const ghUrl = () => `https://api.github.com/repos/${encodeURIComponent(sync.owner)}/${encodeURIComponent(sync.repo)}/contents/${SYNC_PATH}`;
+  const ghHeaders = () => ({ Authorization: `Bearer ${sync.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' });
+  async function ghFetch(url, opts) {
+    try { return await fetch(url, opts); } catch (e) { throw new SyncError('offline'); }
+  }
+  async function ghGet() {
+    const r = await ghFetch(ghUrl(), { headers: ghHeaders(), cache: 'no-store' });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new SyncError('http', r.status);
+    const j = await r.json();
+    return { sha: j.sha, file: JSON.parse(td.decode(fromB64(j.content))) };
+  }
+  async function ghPut(file, sha) {
+    const body = { message: `同期 ${new Date().toISOString()}`, content: toB64(te.encode(JSON.stringify(file))) };
+    if (sha) body.sha = sha;
+    const r = await ghFetch(ghUrl(), { method: 'PUT', headers: { ...ghHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new SyncError('http', r.status);
+  }
+  function syncMessage(e) {
+    if (e.kind === 'pass') return '合言葉が違います。ほかの端末と同じ合言葉を入れてください。';
+    if (e.kind === 'offline') return 'ネットにつながっていません。つながったときに同期します。';
+    if (e.status === 401) return 'トークンが正しくないか、期限が切れています。';
+    if (e.status === 403) return 'トークンに書き込みの権限がありません。「Contents」を「Read and write」にしてください。';
+    if (e.status === 404) return 'リポジトリが見つかりません。ユーザー名・リポジトリ名と、トークンの対象リポジトリを確かめてください。';
+    return `同期できませんでした（${e.status || e.message}）。`;
+  }
+
+  const stamp = x => x.u || x.ts || 0;
+  function mergeState(a, b) {
+    const out = { ...blank(), ...a };
+    const deleted = { ...(b.deleted || {}) };
+    for (const [k, v] of Object.entries(a.deleted || {})) deleted[k] = Math.max(v, deleted[k] || 0);
+    out.deleted = deleted;
+    const list = key => {
+      const m = new Map();
+      for (const x of [...(a[key] || []), ...(b[key] || [])]) {
+        if (deleted[x.id]) continue;
+        const cur = m.get(x.id);
+        if (!cur || stamp(x) > stamp(cur)) m.set(x.id, x);
+      }
+      return [...m.values()];
+    };
+    out.tasks = list('tasks');
+    out.ideas = list('ideas');
+    out.myTerms = list('myTerms');
+    out.study = { ...(b.study || {}) };
+    for (const [id, r] of Object.entries(a.study || {})) {
+      const o = out.study[id];
+      if (!o || (r.count || 0) > (o.count || 0)) out.study[id] = r;
+    }
+    out.studyDays = { ...(b.studyDays || {}) };
+    for (const [d, n] of Object.entries(a.studyDays || {})) out.studyDays[d] = Math.max(n, out.studyDays[d] || 0);
+    const studyWin = new Set();
+    out.wins = list('wins').sort((x, y) => (x.ts || 0) - (y.ts || 0)).filter(w => {
+      if (!w.key) return true;
+      if (studyWin.has(w.key)) return false; // 同じ日の「ふりかえり」は1件にまとめる
+      studyWin.add(w.key);
+      return true;
+    }).map(w => (w.key && out.studyDays[w.key.slice(6)] ? { ...w, text: `診断士の用語と問題を${out.studyDays[w.key.slice(6)]}回ふりかえった` } : w));
+    out.read = { ...(b.read || {}), ...(a.read || {}) };
+    const src = (a.settingsAt || 0) > (b.settingsAt || 0) ? a : b; // 同じならリモートを優先
+    for (const k of SETTING_KEYS) if (src[k] !== undefined) out[k] = src[k];
+    out.settingsAt = Math.max(a.settingsAt || 0, b.settingsAt || 0);
+    return out;
+  }
+  const canon = v => (Array.isArray(v) ? `[${v.map(canon).join(',')}]`
+    : v && typeof v === 'object' ? `{${Object.keys(v).sort().map(k => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
+
+  let syncing = null, syncAgain = false;
+  function syncNow({ manual = false } = {}) {
+    if (!syncReady()) { if (manual) toast('同期の設定がまだです。'); return Promise.resolve(); }
+    if (syncing) { syncAgain = true; return syncing; }
+    syncing = (async () => {
+      sync.busy = true; updateSyncStatus();
+      try {
+        for (let attempt = 0; ; attempt++) {
+          const remote = await ghGet();
+          let merged = S;
+          if (remote) {
+            const theirs = await decryptState(remote.file);
+            merged = mergeState(S, theirs);
+            if (canon(merged) !== canon(S)) { S = merged; saveLocal(); softRender(); }
+            if (canon(merged) === canon(theirs)) break;
+          }
+          try { await ghPut(await encryptState(merged), remote && remote.sha); break; }
+          catch (e) { if ((e.status === 409 || e.status === 422) && attempt < 2) continue; throw e; }
+        }
+        sync.lastAt = Date.now(); sync.error = '';
+        if (manual) toast('同期しました。');
+      } catch (e) {
+        sync.error = syncMessage(e);
+        if (manual) toast(sync.error);
+      } finally {
+        sync.busy = false; saveSync(); syncing = null; updateSyncStatus();
+        if (syncAgain) { syncAgain = false; syncNow(); }
+      }
+    })();
+    return syncing;
+  }
+  function syncStatusText() {
+    if (!syncReady()) return '同期は設定されていません。';
+    if (sync.busy) return '同期しています…';
+    if (sync.error) return `同期できていません：${sync.error}`;
+    if (!sync.lastAt) return 'まだ同期していません。';
+    const d = new Date(sync.lastAt);
+    return `最後の同期：${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  function updateSyncStatus() {
+    document.querySelectorAll('.sync-status').forEach(el => {
+      el.textContent = syncStatusText();
+      el.classList.toggle('is-error', Boolean(syncReady() && sync.error && !sync.busy));
+    });
   }
 
   // ── 小道具 ──
@@ -225,7 +385,7 @@
     return `<div class="qq${done ? (ok ? ' is-ok' : ' is-ng') : ''}">
       <p class="qq-lead">${esc(qq.lead)}</p>
       <p class="qq-q">${esc(qq.q)}</p>
-      <div class="qq-choices${qq.choices.length === 2 ? ' is-tf' : ''}">
+      <div class="qq-choices${qq.choices.length === 2 ? ' is-tf' : qq.choices.every(c => c.length <= 14) ? ' is-grid' : ''}">
         ${qq.choices.map((c, i) => `<button class="qq-choice${done && i === qq.answer ? ' is-answer' : ''}${done && i === qq.picked && !ok ? ' is-picked' : ''}"
           data-act="qq-answer" data-i="${i}"${done ? ' disabled' : ''}>${esc(c)}</button>`).join('')}
       </div>
@@ -354,15 +514,17 @@
   }
 
   function taskItem(t) {
-    return `<li class="task" data-cat="${t.cat}"><div>
-      <p class="task-what">${esc(t.what)}</p>
-      ${t.when ? `<p class="task-when">${esc(t.when)}</p>` : ''}
-      ${t.mini ? `<p class="task-mini">5分版：${esc(t.mini)}</p>` : ''}
-      <div class="task-acts">
-        <button class="btn" data-act="task-done" data-id="${t.id}">できた</button>
-        ${t.mini ? `<button class="btn-line" data-act="task-mini" data-id="${t.id}">5分版だけできた</button>` : ''}
-        <button class="btn-icon" data-act="task-del" data-id="${t.id}" aria-label="「${esc(t.what)}」を消す">消す</button>
-      </div></div></li>`;
+    return `<li class="task" data-cat="${t.cat}">
+      <button class="check" data-act="task-done" data-id="${t.id}" aria-label="できた：${esc(t.what)}"></button>
+      <div class="task-body">
+        <p class="task-what">${esc(t.what)}</p>
+        ${t.when || t.mini ? `<div class="task-meta">
+          ${t.when ? `<span class="task-when">${esc(t.when)}</span>` : ''}
+          ${t.mini ? `<button class="mini" data-act="task-mini" data-id="${t.id}" aria-label="5分版だけできた：${esc(t.mini)}">5分版：${esc(t.mini)}</button>` : ''}
+        </div>` : ''}
+      </div>
+      <button class="btn-icon task-del" data-act="task-del" data-id="${t.id}" aria-label="「${esc(t.what)}」を消す">×</button>
+    </li>`;
   }
 
   function taskForm(cat) {
@@ -383,14 +545,17 @@
     const unit = cat === 'music' ? '曲' : '本';
     const dots = Array.from({ length: Math.max(goal, n) }, (_, i) => `<span class="dot${i < n ? ' on' : ''}"></span>`).join('');
     return `<div class="goal" data-cat="${cat}">
-      <div class="goal-head"><span class="goal-name">${CATS[cat]}</span>
-        <span class="goal-num">${per} ${n} / ${goal}${unit}</span><span class="dots" aria-hidden="true">${dots}</span></div>
+      <div class="goal-line">
+        <span class="goal-name">${CATS[cat]}</span>
+        <span class="dots" aria-hidden="true">${dots}</span>
+        <span class="goal-num${n >= goal ? ' is-done' : ''}">${per} ${n} / ${goal}${unit}${n >= goal ? '　目安に届きました' : ''}</span>
+        <details class="add goal-add"><summary>＋ ${cat === 'music' ? '曲' : '記事'}を公開した</summary>
+          <form class="form form-inline" data-form="pub" data-cat="${cat}">
+            <input name="title" required placeholder="タイトル" aria-label="タイトル"><button class="btn">記録する</button>
+          </form></details>
+      </div>
       ${whyHtml(cat)}
-      ${n >= goal ? `<p class="goal-done">${per}の目安に届きました。</p>` : ''}
-      <details class="add"><summary>${cat === 'music' ? '曲を公開した' : '記事を公開した'}</summary>
-        <form class="form form-inline" data-form="pub" data-cat="${cat}">
-          <input name="title" required placeholder="タイトル" aria-label="タイトル"><button class="btn">記録する</button>
-        </form></details></div>`;
+    </div>`;
   }
 
   function termCard(t, { open = false, quizMode = false } = {}) {
@@ -421,48 +586,55 @@
     const studied = S.studyDays[ymd()] || 0;
     const word = pickDaily(allTerms().filter(t => t.one), 'word');
     return `
-      <section class="vision" aria-label="目的地">
-        ${S.vision ? `<p class="vision-label">目的地</p><p class="vision-text">${esc(S.vision)}</p>`
-          : '<p class="vision-label">目的地</p><p class="empty"><a class="link" href="#/settings">設定</a>で、3〜5年後にどうなっていたいかを書くと、ここに表示されます。</p>'}
-      </section>
-      <header class="hero">
-        <div><p class="hero-date">${jpDate()}</p><p class="hero-count"><b>${total}</b>件の積み上げ</p></div>
-        ${stackHtml()}
+      <header class="top">
+        <div class="top-main">
+          <p class="top-date">${jpDate()}</p>
+          <p class="vision-label">目的地</p>
+          ${S.vision ? `<p class="vision-text">${esc(S.vision)}</p>`
+            : '<p class="empty"><a class="link" href="#/settings">設定</a>で、3〜5年後にどうなっていたいかを書くと、ここに表示されます。</p>'}
+        </div>
+        <div class="top-count"><p class="hero-count"><b>${total}</b>件の積み上げ</p>${stackHtml(24)}</div>
       </header>
+      ${syncReady() && sync.error ? `<p class="meta sync-status is-error" role="status">${esc(syncStatusText())}</p>` : ''}
       <section class="word" aria-label="きょうのことば">
         ${lines.map(l => `<p>${esc(l)}</p>`).join('')}
         ${fact ? `<p class="fact">${esc(fact)}</p>` : ''}
       </section>
-      <section class="block">
-        <h2 class="role"><span class="role-tag is-main">主役</span>${esc(S.mainLabel)}</h2>
-        ${whyHtml('job')}
-        ${jobTasks.length ? `<ul class="tasks">${jobTasks.map(taskItem).join('')}</ul>`
-          : '<p class="empty">次の1歩がまだありません。「いつ・どこで・何を」まで決めておくと、動き出しやすくなります。</p>'}
-        ${taskForm('job')}
-      </section>
-      <section class="block">
-        <h2 class="role"><span class="role-tag">脇役</span>発信</h2>
-        ${goalRow('note')}${goalRow('music')}
-        ${subTasks.length ? `<ul class="tasks">${subTasks.map(taskItem).join('')}</ul>` : ''}
-      </section>
-      <section class="block">
-        <h2 class="role"><span class="role-tag">1日1語・1問</span>診断士</h2>
-        ${whyHtml('study')}
-        ${word ? `<div class="word-of-day">
-          <p class="term-subj">今日の1語</p>
-          <p class="wod-name">${esc(word.t)}</p>
-          <p class="wod-one">${esc(word.one)}</p>
-          <div class="term-acts">
-            <a class="btn" href="${xUrl(termPost(word))}" target="_blank" rel="noopener" data-act="x-term" data-id="${esc(word.id)}">Xにポスト</a>
-            <button class="btn-line" data-act="show-term" data-id="${esc(word.id)}">解説を読む</button>
-          </div></div>` : ''}
-        <div class="qq-slot">${qqHtml()}</div>
-        <p class="meta qq-foot">${studied ? `今日は${studied}回ふりかえりました。` : ''}<a class="link" href="#/study">用語さがしと計算ふりかえりへ</a></p>
-      </section>
-      <section class="block">
-        <h2 class="role"><span class="role-tag">今日の1本</span>designing</h2>
-        <div class="feed-slot" data-mode="today">${feedSlotHtml('today')}</div>
-      </section>
+      <div class="today-grid">
+        <div class="col">
+          <section class="block">
+            <h2 class="role"><span class="role-tag is-main">主役</span>${esc(S.mainLabel)}</h2>
+            ${whyHtml('job')}
+            ${jobTasks.length ? `<ul class="tasks">${jobTasks.map(taskItem).join('')}</ul>`
+              : '<p class="empty">次の1歩がまだありません。「いつ・どこで・何を」まで決めておくと、動き出しやすくなります。</p>'}
+            ${taskForm('job')}
+          </section>
+          <section class="block">
+            <h2 class="role"><span class="role-tag">脇役</span>発信</h2>
+            ${goalRow('note')}${goalRow('music')}
+            ${subTasks.length ? `<ul class="tasks">${subTasks.map(taskItem).join('')}</ul>` : ''}
+          </section>
+        </div>
+        <div class="col">
+          <section class="block">
+            <h2 class="role"><span class="role-tag">1日1語・1問</span>診断士</h2>
+            ${whyHtml('study')}
+            ${word ? `<div class="wod">
+              <div class="wod-text"><p class="term-subj">今日の1語</p>
+                <p class="wod-name">${esc(word.t)}</p><p class="wod-one">${esc(word.one)}</p></div>
+              <div class="wod-acts">
+                <a class="btn" href="${xUrl(termPost(word))}" target="_blank" rel="noopener" data-act="x-term" data-id="${esc(word.id)}">Xにポスト</a>
+                <button class="btn-line" data-act="show-term" data-id="${esc(word.id)}">解説</button>
+              </div></div>` : ''}
+            <div class="qq-slot">${qqHtml()}</div>
+            <p class="meta qq-foot">${studied ? `今日は${studied}回ふりかえりました。` : ''}<a class="link" href="#/study">用語さがしと計算ふりかえりへ</a></p>
+          </section>
+          <section class="block">
+            <h2 class="role"><span class="role-tag">今日の1本</span>designing</h2>
+            <div class="feed-slot" data-mode="today">${feedSlotHtml('today')}</div>
+          </section>
+        </div>
+      </div>
       <div class="down-wrap"><button class="btn-quiet" data-act="down">今日はしんどい</button></div>`;
   }
 
@@ -477,13 +649,12 @@
       return `<h3>${CATS[cat]}</h3>
         ${active.length ? active.map(i => {
           const next = STAGES[cat][i.stage + 1];
-          return `<div class="idea" data-cat="${cat}"><div>
-            <p class="idea-title">${esc(i.title)}</p>
-            <p class="stage">いま：<b>${STAGES[cat][i.stage]}</b></p>
-            <div class="task-acts">
-              <button class="btn-line" data-act="idea-next" data-id="${i.id}">「${next}」に進める</button>
-              <button class="btn-icon" data-act="idea-del" data-id="${i.id}" aria-label="「${esc(i.title)}」を消す">消す</button>
-            </div></div></div>`;
+          return `<div class="idea" data-cat="${cat}">
+            <div class="idea-body"><p class="idea-title">${esc(i.title)}</p><p class="stage">いま：<b>${STAGES[cat][i.stage]}</b></p></div>
+            <div class="idea-acts">
+              <button class="btn-line" data-act="idea-next" data-id="${i.id}">「${next}」へ</button>
+              <button class="btn-icon" data-act="idea-del" data-id="${i.id}" aria-label="「${esc(i.title)}」を消す">×</button>
+            </div></div>`;
         }).join('') : '<p class="empty">ネタはまだありません。</p>'}
         ${doneN ? `<p class="meta">公開済み ${doneN}件</p>` : ''}`;
     };
@@ -630,6 +801,18 @@
   function viewSettings() {
     return `
       <header class="page-head"><h1>設定</h1></header>
+      <section class="block" id="sync" style="margin-top:0"><h2>PCとスマホの同期</h2>
+        <p class="meta">GitHub の非公開リポジトリに、合言葉で暗号化して保存します。合言葉がなければ、GitHub でも中身は読めません。すべての端末で同じ内容を入れてください。</p>
+        <form class="form" data-form="sync" autocomplete="off">
+          <label>GitHub のユーザー名<input name="owner" value="${esc(sync.owner || '')}" autocapitalize="off" spellcheck="false" placeholder="例：oogaiMakito"></label>
+          <label>保存用のリポジトリ名（非公開）<input name="repo" value="${esc(sync.repo || 'tsumiage-data')}" autocapitalize="off" spellcheck="false"></label>
+          <label>アクセストークン<input name="token" type="password" value="${esc(sync.token || '')}" autocapitalize="off" spellcheck="false" placeholder="github_pat_…"></label>
+          <label>合言葉<input name="pass" type="password" value="${esc(sync.pass || '')}" autocapitalize="off"></label>
+          <div class="row"><button class="btn">保存して同期する</button>
+            ${syncReady() ? '<button type="button" class="btn-line" data-act="sync-now">いま同期する</button><button type="button" class="btn-quiet" data-act="sync-off">この端末の同期をやめる</button>' : ''}</div>
+          <p class="meta sync-status" role="status">${esc(syncStatusText())}</p>
+        </form>
+      </section>
       <form class="settings-group" data-form="settings">
         <label class="form" style="margin:0">わたしの事実（1行に1つ）
           <textarea name="facts" rows="8" placeholder="例：〇〇の案件で、△△を□□まで改善した">${esc(S.facts.join('\n'))}</textarea>
@@ -711,6 +894,7 @@
     const y = window.scrollY;
     const v = route();
     $('#main').innerHTML = VIEWS[v]();
+    $('#main').dataset.view = v;
     document.querySelectorAll('[data-view]').forEach(a => {
       if (a.dataset.view === v) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
@@ -720,6 +904,12 @@
     if (v === 'today' || v === 'share') fetchFeed();
   }
 
+  // 入力中に同期で画面が書き換わらないよう、入力が終わるまで待つ
+  let pendingRender = false;
+  const typing = () => { const a = document.activeElement; return a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'file'; };
+  function softRender() { if (typing()) { pendingRender = true; return; } render(); }
+  document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender && !typing()) { pendingRender = false; render(); } }, 300));
+
   // ── 操作 ──
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-act]');
@@ -728,25 +918,25 @@
     switch (el.dataset.act) {
       case 'task-done': {
         const t = S.tasks.find(x => x.id === id); if (!t) return;
-        t.done = true; t.doneAt = ymd(); addWin(t.cat, t.what); render(); break;
+        t.done = true; t.doneAt = ymd(); t.u = Date.now(); addWin(t.cat, t.what); render(); break;
       }
       case 'task-mini': {
         const t = S.tasks.find(x => x.id === id); if (!t) return;
         addWin(t.cat, `5分版：${t.mini}（${t.what}）`); render(); break;
       }
-      case 'task-del': S.tasks = S.tasks.filter(x => x.id !== id); save(); render(); break;
+      case 'task-del': markDeleted(id); S.tasks = S.tasks.filter(x => x.id !== id); save(); render(); break;
       case 'win-del':
         if (!confirm('この記録を消しますか？')) return;
-        S.wins = S.wins.filter(x => x.id !== id); save(); render(); break;
+        markDeleted(id); S.wins = S.wins.filter(x => x.id !== id); save(); render(); break;
       case 'idea-next': {
         const i = S.ideas.find(x => x.id === id); if (!i) return;
-        i.stage += 1;
+        i.stage += 1; i.u = Date.now();
         const last = i.stage === STAGES[i.cat].length - 1;
         if (last) addWin(i.cat, `「${i.title}」を公開した`, { pub: true });
         else addWin(i.cat, `「${i.title}」を${STAGES[i.cat][i.stage]}まで進めた`);
         render(); break;
       }
-      case 'idea-del': S.ideas = S.ideas.filter(x => x.id !== id); save(); render(); break;
+      case 'idea-del': markDeleted(id); S.ideas = S.ideas.filter(x => x.id !== id); save(); render(); break;
       case 'rev-ok': case 'rev-ng':
         review(id, el.dataset.act === 'rev-ok');
         if ('quiz' in el.dataset && quiz) { quiz.i += 1; quiz.shown = false; }
@@ -769,7 +959,7 @@
       }
       case 'term-del':
         if (!confirm('自分で登録した用語を消しますか？')) return;
-        S.myTerms = S.myTerms.filter(x => x.id !== id); delete S.study[id]; save(); searchQ = ''; render(); break;
+        markDeleted(id); S.myTerms = S.myTerms.filter(x => x.id !== id); delete S.study[id]; save(); searchQ = ''; render(); break;
       case 'qq-answer': {
         if (!qq || qq.picked !== null) return;
         qq.picked = Number(el.dataset.i);
@@ -789,11 +979,15 @@
       }
       case 'art-idea': {
         const it = feedItem(id); if (!it) return;
-        S.ideas.push({ id: uid(), cat: 'note', title: `「${it.title}」を読んで考えたこと`, stage: 0, created: ymd(), src: it.link });
+        S.ideas.push({ id: uid(), cat: 'note', title: `「${it.title}」を読んで考えたこと`, stage: 0, created: ymd(), src: it.link, u: Date.now() });
         save(); toast('ネタ帳に追加しました。'); break;
       }
       case 'art-skip': S.read = { ...S.read, [id]: 'skip' }; save(); refreshFeedSlots(); break;
       case 'feed-retry': fetchFeed(true); break;
+      case 'sync-now': syncNow({ manual: true }); break;
+      case 'sync-off':
+        if (!confirm('この端末の同期設定を消します（記録は消えません）。よろしいですか？')) return;
+        sync = {}; saveSync(); render(); toast('この端末の同期をやめました。'); break;
       case 'down': openDown(); break;
       case 'down-close': $('#down').close(); break;
       case 'tiny':
@@ -820,7 +1014,7 @@
         applyTheme(); break;
       }
       case 'reset':
-        if (!confirm('この端末のデータをすべて消します。よろしいですか？')) return;
+        if (!confirm(syncReady() ? 'この端末のデータを消します。同期を設定しているので、次の同期でほかの端末のデータから戻ります。よろしいですか？' : 'この端末のデータをすべて消します。よろしいですか？')) return;
         S = blank(); save(); render(); toast('消しました。'); break;
     }
   });
@@ -834,7 +1028,7 @@
         const data = JSON.parse(reader.result);
         if (!Array.isArray(data.wins)) throw new Error('形式が違います');
         if (!confirm('読み込んだ内容で、この端末のデータを置き換えます。よろしいですか？')) return;
-        S = { ...blank(), ...data }; save(); render(); toast('読み込みました。');
+        S = { ...blank(), ...data, settingsAt: Date.now() }; save(); render(); toast('読み込みました。');
       } catch (err) { toast('読み込めませんでした。「書き出す」で作ったファイルを選んでください。'); }
       el.value = '';
     };
@@ -848,25 +1042,33 @@
     const d = Object.fromEntries(new FormData(f));
     switch (f.dataset.form) {
       case 'task':
-        S.tasks.push({ id: uid(), cat: d.cat, what: d.what.trim(), when: d.when.trim(), mini: d.mini.trim(), done: false, created: ymd() });
+        S.tasks.push({ id: uid(), cat: d.cat, what: d.what.trim(), when: d.when.trim(), mini: d.mini.trim(), done: false, created: ymd(), u: Date.now() });
         save(); render(); toast('次の1歩を決めました。'); break;
       case 'pub':
         addWin(f.dataset.cat, `「${d.title.trim()}」を公開した`, { pub: true }); render(); break;
       case 'idea':
-        S.ideas.push({ id: uid(), cat: d.cat, title: d.title.trim(), stage: 0, created: ymd() });
+        S.ideas.push({ id: uid(), cat: d.cat, title: d.title.trim(), stage: 0, created: ymd(), u: Date.now() });
         save(); render(); toast('ネタ帳に追加しました。'); break;
       case 'win':
         addWin(d.cat, d.text.trim()); render(); break;
       case 'search':
         searchQ = d.q; $('#results').innerHTML = resultsHtml(searchQ); break;
       case 'myterm':
-        S.myTerms.push({ id: `my-${uid()}`, t: d.t.trim(), s: d.s, one: d.one.trim(), body: d.body.trim(), y: [] });
+        S.myTerms.push({ u: Date.now(), id: `my-${uid()}`, t: d.t.trim(), s: d.s, one: d.one.trim(), body: d.body.trim(), y: [] });
         save(); searchQ = d.t.trim(); render(); toast('自分の辞書に登録しました。'); break;
+      case 'sync': {
+        const next = { owner: d.owner.trim(), repo: d.repo.trim(), token: d.token.trim(), pass: d.pass };
+        if (!next.owner || !next.repo || !next.token || !next.pass) { toast('4つの欄をすべて入れてください。'); return; }
+        if (next.owner !== sync.owner || next.repo !== sync.repo || next.pass !== sync.pass) { sync = { ...next }; keyCache = null; }
+        else sync = { ...sync, ...next };
+        saveSync(); render(); syncNow({ manual: true }); break;
+      }
       case 'settings':
         S.facts = d.facts.split('\n').map(s => s.trim()).filter(Boolean);
         S.mainLabel = d.mainLabel.trim() || '転職活動';
         S.goals = { note: Math.max(1, +d.gNote || 1), music: Math.max(1, +d.gMusic || 1) };
         S.links = { note: d.lNote.trim(), youtube: d.lYoutube.trim(), x: d.lX.trim() };
+        S.settingsAt = Date.now();
         S.vision = d.vision.trim();
         S.why = { job: d.whyJob.trim(), note: d.whyNote.trim(), music: d.whyMusic.trim(), study: d.whyStudy.trim() };
         S.interests = d.interests.split(/[、,，\s]+/).map(x => x.trim()).filter(Boolean);
@@ -898,10 +1100,16 @@
 
   window.addEventListener('hashchange', () => render(true));
   // 日付が変わってから開き直したときに、表示を今日に合わせる
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && route() === 'today') render(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (route() === 'today') softRender();
+    syncNow();
+  });
+  window.addEventListener('online', () => syncNow());
 
   applyTheme();
   render(true);
+  syncNow();
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
