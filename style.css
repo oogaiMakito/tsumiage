@@ -267,3 +267,54 @@ dialog .close-row { margin-top: 24px; text-align: right; }
 .settings-group { display: grid; gap: 12px; }
 .settings-group .hint { font-size: 13px; color: var(--sub); }
 .goal-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* ── ちょっと1問 ── */
+.qq { padding: 18px 18px 20px; border: 1px solid var(--rule); border-radius: var(--radius); }
+.qq-lead { font-size: 13px; font-weight: 700; color: var(--c-study); }
+.qq-q { font-size: 18px; font-weight: 700; line-height: 1.7; margin-top: 4px; }
+.qq-choices { display: grid; gap: 8px; margin-top: 14px; }
+.qq-choices.is-tf { grid-template-columns: 1fr 1fr; }
+.qq-choices.is-tf .qq-choice { text-align: center; font-size: 22px; padding: 8px; }
+.qq-choice {
+  text-align: left; cursor: pointer; background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius);
+  padding: 10px 14px; font-size: 15px; font-weight: 500; line-height: 1.5; min-height: 44px;
+}
+.qq-choice:not(:disabled):hover { border-color: var(--ink); }
+.qq-choice:disabled { cursor: default; color: var(--sub); }
+.qq-choice.is-answer { border: 2px solid var(--c-music); color: var(--ink); font-weight: 700; }
+.qq-choice.is-picked { border-style: dashed; }
+.qq-result { margin-top: 14px; }
+.qq-verdict { font-weight: 900; font-size: 17px; }
+.qq.is-ok .qq-verdict { color: var(--c-music); }
+.qq-exp { font-size: 15px; margin-top: 4px; }
+.qq-foot { margin-top: 10px; }
+.qq.is-ok .qq-choice.is-answer { animation: pop .35s ease-out; }
+@keyframes pop { 50% { transform: scale(1.03); } }
+@media (prefers-reduced-motion: reduce) { .qq.is-ok .qq-choice.is-answer { animation: none; } }
+
+/* ── designing ── */
+.article { padding: 14px 0 18px; border-bottom: 1px solid var(--rule); }
+.article:last-of-type { border-bottom: 0; }
+.article-date { font-size: 12px; color: var(--sub); }
+.article-title { font-size: 17px; font-weight: 700; line-height: 1.6; margin-top: 2px; }
+.article-title a { text-decoration: none; }
+.article-title a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.article-desc { font-size: 15px; margin-top: 6px; }
+.article-lines { margin-top: 10px; display: grid; gap: 6px; }
+.article-lines li { font-size: 14px; color: var(--sub); padding-left: 12px; border-left: 2px solid var(--rule); }
+.article-why { font-size: 13px; color: var(--accent); margin-top: 10px; font-weight: 500; }
+.article .row { margin-top: 8px; }
+.feed-foot { margin-top: 12px; }
+
+/* ── 目的地 ── */
+.vision { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--rule); }
+.vision-label { font-size: 12px; font-weight: 700; color: var(--accent); }
+.vision-text { font-size: 21px; font-weight: 900; line-height: 1.6; margin-top: 2px; letter-spacing: .03em; }
+.why { font-size: 13px; color: var(--sub); margin: -8px 0 10px; }
+.goal .why { margin: 4px 0 0; }
+
+/* ── 今日の1語 ── */
+.word-of-day { margin-bottom: 16px; }
+.wod-name { font-size: 20px; font-weight: 900; line-height: 1.5; }
+.wod-one { font-size: 15px; margin-top: 2px; }
+a.btn, a.btn-line { display: inline-flex; align-items: center; text-decoration: none; }
