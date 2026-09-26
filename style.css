@@ -1,56 +1,61 @@
-/* 淡いミントの背景に白いカード。主役の色は深いティール #033236、入力欄は #F6F6F6。 */
+/* クリームの背景に、セクションごとのパステルカード。文字とボタンは黒でメリハリを出す。 */
 :root {
-  --bg-1: #dcece3;
-  --bg-2: #eef4f1;
-  --bg-3: #e2ebe9;
+  --bg: #fbf6ee;
   --card: #ffffff;
-  --field: #f6f6f6;
-  --primary: #033236;
+  --field: #f4f0e9;
+  --primary: #1c1c1e;
   --primary-ink: #ffffff;
-  --mint: #d7f1e1;
-  --mint-ink: #0b5a4e;
-  --ink: #0f2527;
-  --sub: #6b7b7c;
-  --rule: #edf0ef;
-  --good: #1f8a64;
-  --warn: #b4452f;
-  --c-job: #033236;
-  --c-note: #2c7f73;
-  --c-music: #5fae84;
-  --c-study: #c08a3e;
-  --c-other: #a3b1af;
-  --focus: #2c7f73;
-  --r-card: 24px;
+  --mint: #f4f0e9;
+  --mint-ink: #1c1c1e;
+  --ink: #1c1c1e;
+  --sub: #6f6a64;
+  --rule: #eee7dd;
+  --good: #2e8b6a;
+  --warn: #c2483a;
+  --c-job: #e0766b;
+  --c-note: #7d87d9;
+  --c-music: #43a894;
+  --c-study: #d0a11c;
+  --c-other: #d9956b;
+  --focus: #1c1c1e;
+  --r-card: 26px;
   --r-field: 14px;
   --font: 'Poppins', 'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', 'Hiragino Sans', system-ui, sans-serif;
   --serif-en: 'Cormorant Garamond', 'Times New Roman', serif;
   --serif-zh: 'Noto Serif TC', 'Songti TC', 'Hiragino Mincho ProN', serif;
+  /* セクションの色 */
+  --t-olive: #b8c47e;
+  --t-coral: #f4a79e;
+  --t-lavender: #c3c9f3;
+  --t-mint: #a9dfd4;
+  --t-yellow: #f6d86b;
+  --t-pink: #f2b8d5;
+  --t-peach: #f8d5bd;
+  --t-sky: #bfdff3;
+  --t-sand: #ece0c6;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg-1: #06191b; --bg-2: #0a2427; --bg-3: #081d20;
-    --card: #0f2b2e; --field: #173a3d; --primary: #9fe3c3; --primary-ink: #033236;
-    --mint: #1d4a44; --mint-ink: #9fe3c3; --ink: #e8f2ef; --sub: #93a8a6; --rule: #1d3c3f;
-    --good: #7ed8ab; --warn: #f29a86;
-    --c-job: #9fe3c3; --c-note: #6cc3b3; --c-music: #8fd3a9; --c-study: #e2b56f; --c-other: #6f8583;
-    --focus: #9fe3c3; color-scheme: dark;
+    --bg: #141416; --card: #232327; --field: #2d2d33; --primary: #f6d86b; --primary-ink: #1c1c1e;
+    --mint: #2d2d33; --mint-ink: #f2efea; --ink: #f2efea; --sub: #a8a39c; --rule: #34343a;
+    --good: #7ed8ab; --warn: #f29a86; --focus: #f6d86b;
+    --c-job: #f4a79e; --c-note: #c3c9f3; --c-music: #a9dfd4; --c-study: #f6d86b; --c-other: #f8d5bd;
+    color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg-1: #06191b; --bg-2: #0a2427; --bg-3: #081d20;
-  --card: #0f2b2e; --field: #173a3d; --primary: #9fe3c3; --primary-ink: #033236;
-  --mint: #1d4a44; --mint-ink: #9fe3c3; --ink: #e8f2ef; --sub: #93a8a6; --rule: #1d3c3f;
-  --good: #7ed8ab; --warn: #f29a86;
-  --c-job: #9fe3c3; --c-note: #6cc3b3; --c-music: #8fd3a9; --c-study: #e2b56f; --c-other: #6f8583;
-  --focus: #9fe3c3; color-scheme: dark;
+  --bg: #141416; --card: #232327; --field: #2d2d33; --primary: #f6d86b; --primary-ink: #1c1c1e;
+  --mint: #2d2d33; --mint-ink: #f2efea; --ink: #f2efea; --sub: #a8a39c; --rule: #34343a;
+  --good: #7ed8ab; --warn: #f29a86; --focus: #f6d86b;
+  --c-job: #f4a79e; --c-note: #c3c9f3; --c-music: #a9dfd4; --c-study: #f6d86b; --c-other: #f8d5bd;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
-  margin: 0; min-height: 100vh; color: var(--ink);
-  background: var(--bg-2) linear-gradient(165deg, var(--bg-1) 0%, var(--bg-2) 45%, var(--bg-3) 75%, var(--bg-1) 100%) fixed;
+  margin: 0; min-height: 100vh; color: var(--ink); background: var(--bg);
   font-family: var(--font); font-size: 15px; line-height: 1.7; letter-spacing: .01em; overflow-wrap: anywhere;
 }
 h1, h2, h3, h4, p, ul, dl, dd { margin: 0; }
@@ -77,7 +82,7 @@ main:focus { outline: none; }
 .nav {
   position: fixed; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 10;
   display: flex; gap: 2px; padding: 6px; border-radius: 999px;
-  background: #033236; box-shadow: 0 10px 30px rgba(3, 50, 54, .25);
+  background: #1c1c1e; box-shadow: 0 10px 30px rgba(28, 28, 30, .22);
 }
 .brand { display: none; }
 .nav-link {
@@ -86,7 +91,7 @@ main:focus { outline: none; }
   color: rgba(255, 255, 255, .72); font-size: 10px; font-weight: 500; line-height: 1.2;
 }
 .nav-link svg { width: 19px; height: 19px; }
-.nav-link[aria-current="page"] { background: #ffffff; color: #033236; font-weight: 600; }
+.nav-link[aria-current="page"] { background: #ffffff; color: #1c1c1e; font-weight: 600; }
 
 @media (min-width: 900px) {
   .shell { display: grid; grid-template-columns: 236px minmax(0, 1fr); }
@@ -95,7 +100,7 @@ main:focus { outline: none; }
     height: calc(100vh - 32px); flex-direction: column; gap: 4px; padding: 22px 12px; border-radius: 28px;
   }
   .brand { display: block; color: #fff; font-weight: 700; font-size: 19px; letter-spacing: .06em; text-decoration: none; margin: 0 12px 26px; line-height: 1.3; }
-  .brand small { display: block; font-family: var(--serif-en); font-style: italic; font-weight: 600; font-size: 17px; letter-spacing: .02em; color: #9fe3c3; }
+  .brand small { display: block; font-family: var(--serif-en); font-style: italic; font-weight: 600; font-size: 17px; letter-spacing: .02em; color: #f6d86b; }
   .nav-link { flex: 0 0 auto; flex-direction: row; justify-content: flex-start; gap: 12px; min-height: 46px; padding: 0 16px; font-size: 14px; }
   .nav-link:not([aria-current="page"]):hover { background: rgba(255, 255, 255, .08); color: #fff; }
   .nav-link svg { width: 20px; height: 20px; }
@@ -136,7 +141,7 @@ main:focus { outline: none; }
 .day-pill b { font-size: 16px; font-weight: 600; font-family: 'Poppins', var(--font); }
 .day-pill span { font-size: 10px; color: var(--sub); }
 .day-pill i { width: 5px; height: 5px; border-radius: 50%; margin-top: 4px; background: transparent; }
-.day-pill i.on { background: var(--c-note); }
+.day-pill i.on { background: var(--ink); }
 .day-pill.is-today { background: var(--primary); color: var(--primary-ink); }
 .day-pill.is-today span { color: inherit; opacity: .75; }
 .day-pill.is-today i.on { background: var(--primary-ink); }
@@ -213,11 +218,11 @@ input:not([type="file"]), select, textarea {
 }
 select {
   padding-right: 36px; background-repeat: no-repeat; background-position: right 14px center; background-size: 12px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%236b7b7c' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%236f6a64' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 textarea { min-height: 110px; line-height: 1.7; resize: vertical; }
-input:focus, select:focus, textarea:focus { border-color: var(--c-note); outline: none; background-color: var(--card); }
-::placeholder { color: #9aa7a6; }
+input:focus, select:focus, textarea:focus { border-color: var(--ink); outline: none; background-color: var(--card); }
+::placeholder { color: #a39d95; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .save-row { display: flex; justify-content: flex-end; }
 .save-row .btn { min-width: 200px; }
@@ -268,7 +273,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--c-note); outline
 .wod-acts { display: grid; gap: 6px; }
 
 .qq { background: var(--field); border-radius: 20px; padding: 14px; }
-.qq-lead { font-size: 12px; font-weight: 600; color: var(--c-note); }
+.qq-lead { font-size: 12px; font-weight: 600; color: var(--sub); }
 .qq-q { font-size: 15px; font-weight: 600; line-height: 1.65; margin-top: 2px; }
 .qq-choices { display: grid; gap: 6px; margin-top: 10px; }
 .qq-choices.is-grid, .qq-choices.is-tf { grid-template-columns: 1fr 1fr; }
@@ -277,7 +282,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--c-note); outline
   text-align: left; cursor: pointer; background: var(--card); border: 1.5px solid transparent; border-radius: 14px;
   padding: 9px 14px; font-size: 14px; font-weight: 500; line-height: 1.45; min-height: 44px;
 }
-.qq-choice:not(:disabled):hover { border-color: var(--c-note); }
+.qq-choice:not(:disabled):hover { border-color: var(--ink); }
 .qq-choice:disabled { cursor: default; color: var(--sub); }
 .qq-choice.is-answer { background: var(--primary); color: var(--primary-ink); font-weight: 600; }
 .qq-choice.is-picked { border-color: var(--warn); color: var(--warn); }
@@ -375,7 +380,7 @@ dialog {
   width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 40px); overflow: auto;
   border: 0; border-radius: 28px; padding: 24px 20px; background: var(--card); color: var(--ink);
 }
-dialog::backdrop { background: rgba(3, 50, 54, .45); backdrop-filter: blur(4px); }
+dialog::backdrop { background: rgba(28, 28, 30, .45); backdrop-filter: blur(4px); }
 dialog h2 { font-size: 20px; font-weight: 700; line-height: 1.5; }
 dialog h3 { font-size: 13px; font-weight: 600; color: var(--sub); margin: 18px 0 6px; }
 dialog .intro { margin-top: 8px; font-size: 14px; }
@@ -400,7 +405,7 @@ dialog .close-row { margin-top: 20px; text-align: right; }
 /* 英語：イタリックのセリフ体で、カードの見出しに添える */
 .en {
   position: relative; font-family: var(--serif-en); font-style: italic; font-weight: 600;
-  font-size: 22px; line-height: 1; letter-spacing: .01em; color: var(--c-note); margin: 0 0 10px 2px;
+  font-size: 24px; line-height: 1; letter-spacing: .01em; color: var(--ink); margin: 0 0 10px 2px;
 }
 .card > .en + .card-head { margin-top: 0; }
 .en-display {
@@ -421,7 +426,7 @@ dialog .close-row { margin-top: 20px; text-align: right; }
 }
 .zh-mark.is-motto {
   top: 6px; right: 0; writing-mode: vertical-rl; font-size: 15px; font-weight: 700;
-  letter-spacing: .45em; opacity: .7; color: var(--c-note);
+  letter-spacing: .45em; opacity: .75; color: var(--ink);
 }
 .page-head:has(.is-motto) { padding-right: 34px; }
 .motto { display: grid; justify-items: center; gap: 2px; margin-bottom: 14px; color: var(--primary); }
@@ -429,29 +434,34 @@ dialog .close-row { margin-top: 20px; text-align: right; }
 .motto em { font-family: var(--serif-en); font-weight: 600; font-size: 16px; color: var(--sub); }
 dialog .en { font-size: 20px; margin-bottom: 6px; }
 
-/* ── メリハリ：コーチのカードを反転 ── */
-.card.is-dark {
-  background: var(--primary); color: var(--primary-ink);
-  --field: rgba(255, 255, 255, .09); --sub: rgba(255, 255, 255, .68);
-  --mint: rgba(255, 255, 255, .14); --mint-ink: #ffffff; --c-note: #9fe3c3;
+/* ── セクションの色 ── */
+/* 色つきカードの中は、背景の色によらず黒い文字・白い部品でそろえる */
+.card[data-tone] {
+  color: #1c1c1e;
+  --ink: #1c1c1e; --sub: rgba(28, 28, 30, .64); --rule: rgba(28, 28, 30, .1);
+  --field: rgba(255, 255, 255, .55); --card: #ffffff;
+  --mint: #ffffff; --mint-ink: #1c1c1e;
+  --primary: #1c1c1e; --primary-ink: #ffffff; --focus: #1c1c1e;
+  --good: #1e6b50; --warn: #a3321f;
+  background: var(--tone);
 }
-.card.is-dark > .zh { color: #ffffff; opacity: .08; }
-.card.is-dark .day-pill.is-today { background: #ffffff; color: #033236; }
-.card.is-dark .day-pill.is-today i.on { background: #033236; }
-.card.is-dark .day-pill i.on { background: #9fe3c3; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .card.is-dark {
-    --field: rgba(3, 50, 54, .1); --sub: rgba(3, 50, 54, .68); --mint: rgba(3, 50, 54, .12); --mint-ink: #033236; --c-note: #0b5a4e;
-  }
-  :root:not([data-theme="light"]) .card.is-dark > .zh { color: #033236; }
-  :root:not([data-theme="light"]) .card.is-dark .day-pill.is-today { background: #033236; color: #ffffff; }
-  :root:not([data-theme="light"]) .card.is-dark .day-pill.is-today i.on { background: #9fe3c3; }
-  :root:not([data-theme="light"]) .card.is-dark .day-pill i.on { background: #0b5a4e; }
-}
-:root[data-theme="dark"] .card.is-dark {
-  --field: rgba(3, 50, 54, .1); --sub: rgba(3, 50, 54, .68); --mint: rgba(3, 50, 54, .12); --mint-ink: #033236; --c-note: #0b5a4e;
-}
-:root[data-theme="dark"] .card.is-dark > .zh { color: #033236; }
-:root[data-theme="dark"] .card.is-dark .day-pill.is-today { background: #033236; color: #ffffff; }
-:root[data-theme="dark"] .card.is-dark .day-pill.is-today i.on { background: #9fe3c3; }
-:root[data-theme="dark"] .card.is-dark .day-pill i.on { background: #0b5a4e; }
+.card[data-tone] [data-cat] { --c: #1c1c1e; }
+.card[data-tone] > .zh { color: #1c1c1e; opacity: .08; }
+.card[data-tone="olive"] { --tone: var(--t-olive); }
+.card[data-tone="coral"] { --tone: var(--t-coral); }
+.card[data-tone="lavender"] { --tone: var(--t-lavender); }
+.card[data-tone="mint"] { --tone: var(--t-mint); }
+.card[data-tone="yellow"] { --tone: var(--t-yellow); }
+.card[data-tone="pink"] { --tone: var(--t-pink); }
+.card[data-tone="peach"] { --tone: var(--t-peach); }
+.card[data-tone="sky"] { --tone: var(--t-sky); }
+.card[data-tone="sand"] { --tone: var(--t-sand); }
+.card[data-tone] input:focus, .card[data-tone] select:focus, .card[data-tone] textarea:focus { background-color: #ffffff; }
+.card[data-tone] .qq { background: rgba(255, 255, 255, .45); }
+.card[data-tone] .quiz-card { background: rgba(255, 255, 255, .45); }
+.card[data-tone] .gauge i { background: rgba(255, 255, 255, .6); }
+.card[data-tone] .bar { background: rgba(255, 255, 255, .6); }
+.card[data-tone] .gauge i.on, .card[data-tone] .bar.is-today { background: var(--primary); }
+.card[data-tone] .btn-line:hover, .card[data-tone] .chip:hover, .card[data-tone] .mini:hover { background: #ffffff; }
+/* コーチの吹き出しの横の丸は、コーチのカードと同じ色 */
+.avatar { background: var(--t-olive); color: #1c1c1e; }

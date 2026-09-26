@@ -649,7 +649,7 @@
             ${S.vision ? `<h1 class="vision-text">${esc(S.vision)}</h1>`
               : '<h1>目的地を決めましょう</h1><p class="lead"><a class="link" href="#/settings">設定</a>で、3〜5年後にどうなっていたいかを書くと、ここに表示されます。</p>'}
           </header>
-          <section class="card is-dark">
+          <section class="card" data-tone="olive">
             ${deco('Your Coach', '伴')}${cardHead('spark', 'コーチ', '記録した事実をもとに声をかけます')}
             ${weekStrip()}
           </section>
@@ -658,38 +658,38 @@
             ${fact ? `<div class="bubble-row"><span class="avatar">${icon('spark')}</span><p class="bubble"><small>思い出してほしい事実</small>${esc(fact)}</p></div>` : ''}
           </div>
           <div class="stats">
-            <section class="card stat">
+            <section class="card stat" data-tone="peach">
               ${deco('Stacked', '積')}
               <div class="stat-top"><span class="badge">${icon('stack')}</span><b class="stat-num">${total}</b></div>
               <p class="stat-label">積み上げ</p><p class="stat-sub">直近14日で記録した日</p>
               ${gaugeHtml()}
             </section>
-            <section class="card stat">
+            <section class="card stat" data-tone="sky">
               ${deco('This Week', '週')}
               <div class="stat-top"><span class="badge">${icon('chart')}</span><b class="stat-num">${week.length}</b></div>
               <p class="stat-label">今週</p>
               <dl class="stat-list"><dt>転職</dt><dd>${wk('job')}</dd><dt>発信</dt><dd>${wk(['note', 'music'])}</dd><dt>診断士</dt><dd>${wk('study')}</dd></dl>
             </section>
           </div>
-          <section class="card">
+          <section class="card" data-tone="pink">
             ${deco('Seven Days', '跡')}${cardHead('chart', 'この7日間', `${last7}件の記録。小さな1件も、ちゃんと数えています。`)}
             ${barsHtml(7)}
           </section>
         </div>
         <div class="col">
-          <section class="card">
+          <section class="card" data-tone="coral">
             ${deco('Main Role', '轉')}${cardHead('target', esc(S.mainLabel), '主役')}
             ${whyHtml('job')}
             ${jobTasks.length ? `<ul class="tasks">${jobTasks.map(taskItem).join('')}</ul>`
               : '<p class="empty">次の1歩がまだありません。「いつ・どこで・何を」まで決めておくと、動き出しやすくなります。</p>'}
             ${taskForm('job')}
           </section>
-          <section class="card">
+          <section class="card" data-tone="lavender">
             ${deco('Side Role', '發')}${cardHead('pen', '発信', '脇役')}
             ${goalRow('note')}${goalRow('music')}
             ${subTasks.length ? `<ul class="tasks">${subTasks.map(taskItem).join('')}</ul>` : ''}
           </section>
-          <section class="card">
+          <section class="card" data-tone="yellow">
             ${deco('Daily Study', '學')}${cardHead('book', '診断士', '1日1語・1問')}
             ${whyHtml('study')}
             ${word ? `<div class="wod">
@@ -702,7 +702,7 @@
             <div class="qq-slot">${qqHtml()}</div>
             <p class="meta qq-foot">${studied ? `今日は${studied}回ふりかえりました。` : ''}<a class="link" href="#/study">用語さがしと計算ふりかえりへ</a></p>
           </section>
-          <section class="card">
+          <section class="card" data-tone="sand">
             ${deco('Today&rsquo;s Read', '讀')}${cardHead('news', 'designing', '今日の1本')}
             <div class="feed-slot" data-mode="today">${feedSlotHtml('today')}</div>
           </section>
@@ -738,8 +738,8 @@
       ${pageHead('発信', `ネタを書きとめて、公開まで進めます。note は週${S.goals.note}本、音楽は月${S.goals.music}曲が目安です。`, 'Create &amp; Share', '創')}
       <div class="grid-2">
         <div class="col">
-          <section class="card">${deco('Pace', '律')}${cardHead('pen', '今週・今月の目安')}${goalRow('note')}${goalRow('music')}</section>
-          <section class="card">${deco('Idea Book', '想')}${cardHead('bulb', 'ネタ帳', 'ネタ → 下書き → 公開')}
+          <section class="card" data-tone="lavender">${deco('Pace', '律')}${cardHead('pen', '今週・今月の目安')}${goalRow('note')}${goalRow('music')}</section>
+          <section class="card" data-tone="mint">${deco('Idea Book', '想')}${cardHead('bulb', 'ネタ帳', 'ネタ → 下書き → 公開')}
             <form class="form form-row" data-form="idea">
               <select name="cat" aria-label="分類"><option value="note">note</option><option value="music">音楽</option></select>
               <input name="title" required placeholder="例：〇〇の制作ノート" aria-label="ネタ">
@@ -747,13 +747,13 @@
             </form>
             <div class="ideas">${ideaList('note')}${ideaList('music')}</div>
           </section>
-          <section class="card">${deco('Channels', '連')}${cardHead('link', '発信先')}
+          <section class="card" data-tone="sky">${deco('Channels', '連')}${cardHead('link', '発信先')}
             ${linkItems.length ? `<p class="links">${linkItems.map(([k, n]) => `<a class="btn-line" href="${esc(L[k])}" target="_blank" rel="noopener">${n}を開く</a>`).join('')}</p>`
               : '<p class="empty">設定でURLを登録すると、ここから開けます。</p>'}
           </section>
         </div>
         <div class="col">
-          <section class="card">${deco('Reading List', '讀')}${cardHead('news', 'designing のおすすめ', '関心のあるキーワードと、診断士の用語に近い記事から順に並べています')}
+          <section class="card" data-tone="sand">${deco('Reading List', '讀')}${cardHead('news', 'designing のおすすめ', '関心のあるキーワードと、診断士の用語に近い記事から順に並べています')}
             <div class="feed-slot" data-mode="list">${feedSlotHtml('list')}</div>
           </section>
         </div>
@@ -836,21 +836,21 @@
       <div id="results" class="card">${resultsHtml(searchQ)}</div>
       <div class="grid-2">
         <div class="col">
-          <section class="card">${deco('Quick Quiz', '問')}${cardHead('quiz', 'ちょっと1問', '用語当て・○×・暗算。間違えた問題は明日もう一度')}
+          <section class="card" data-tone="yellow">${deco('Quick Quiz', '問')}${cardHead('quiz', 'ちょっと1問', '用語当て・○×・暗算。間違えた問題は明日もう一度')}
             <div class="qq-slot">${qqHtml()}</div>
           </section>
-          <section class="card">${deco('Review', '復')}${cardHead('book', '用語ふりかえり', `ふりかえった語 ${seen} / ${terms.length}　今日 ${S.studyDays[ymd()] || 0}回　復習待ち ${dueTerms().length}語`)}
+          <section class="card" data-tone="mint">${deco('Review', '復')}${cardHead('book', '用語ふりかえり', `ふりかえった語 ${seen} / ${terms.length}　今日 ${S.studyDays[ymd()] || 0}回　復習待ち ${dueTerms().length}語`)}
             <div class="meter" aria-hidden="true"><i style="width:${Math.round(seen / terms.length * 100)}%"></i></div>
             <div id="quiz">${quizHtml()}</div>
           </section>
-          <section class="card glossary-list">${deco('Glossary', '詞')}${cardHead('list', '用語一覧')}
+          <section class="card glossary-list" data-tone="lavender">${deco('Glossary', '詞')}${cardHead('list', '用語一覧')}
             ${bySubj.map(([s, ts]) => `<details><summary>${esc(s)}（${ts.length}）</summary><div class="row">
               ${ts.map(t => `<button class="chip${S.study[t.id] ? ' is-seen' : ''}" data-act="show-term" data-id="${esc(t.id)}">${esc(t.t)}</button>`).join('')}
             </div></details>`).join('')}
           </section>
         </div>
         <div class="col">
-          <section class="card">${deco('Numbers', '算')}${cardHead('calc', '計算ふりかえり', '数字を変えると、その場で答えが変わります。本の例題の答え合わせにも')}
+          <section class="card" data-tone="peach">${deco('Numbers', '算')}${cardHead('calc', '計算ふりかえり', '数字を変えると、その場で答えが変わります。本の例題の答え合わせにも')}
             ${FORMULAS.map(formulaHtml).join('')}
           </section>
         </div>
@@ -867,13 +867,13 @@
       ${pageHead('積み上げ', 'できたことを1行で残します。小さなことほど書いておく価値があります。', 'Records', '積')}
       <div class="grid-2">
         <div class="col">
-          <section class="card">${deco('Record', '記')}${cardHead('plus', 'できたことを記録する')}
+          <section class="card" data-tone="peach">${deco('Record', '記')}${cardHead('plus', 'できたことを記録する')}
             <form class="form" data-form="win">
               <input name="text" required placeholder="例：職務経歴書の実績を1つ書き直した" aria-label="できたこと">
               <div class="row"><select name="cat" aria-label="分類" style="width:auto">${catOptions('job')}</select><button class="btn">記録する</button></div>
             </form>
           </section>
-          <section class="card">${deco('This Week', '週')}${cardHead('chart', `今週 ${week.length}件`, '直近14日の記録')}
+          <section class="card" data-tone="pink">${deco('This Week', '週')}${cardHead('chart', `今週 ${week.length}件`, '直近14日の記録')}
             ${barsHtml(14)}
             ${counts.length ? `<p class="week-sum">${counts.map(([c, n]) => `<span data-cat="${c}">${CATS[c]} ${n}</span>`).join('')}</p>` : '<p class="empty">今週の記録はまだありません。</p>'}
           </section>
@@ -895,7 +895,7 @@
       ${pageHead('設定', '同期、目的地、表示などを変えられます。', 'Settings', '設')}
       <div class="grid-2">
         <div class="col">
-          <section class="card" id="sync">${deco('Sync', '同')}${cardHead('sync', 'PCとスマホの同期', 'GitHub の非公開リポジトリに、合言葉で暗号化して保存します')}
+          <section class="card" id="sync" data-tone="sky">${deco('Sync', '同')}${cardHead('sync', 'PCとスマホの同期', 'GitHub の非公開リポジトリに、合言葉で暗号化して保存します')}
             <form class="form" data-form="sync" autocomplete="off">
               <label>GitHub のユーザー名<input name="owner" value="${esc(sync.owner || '')}" autocapitalize="off" spellcheck="false" placeholder="例：oogaiMakito"></label>
               <label>保存用のリポジトリ名（非公開）<input name="repo" value="${esc(sync.repo || 'tsumiage-data')}" autocapitalize="off" spellcheck="false"></label>
@@ -909,7 +909,7 @@
             </form>
           </section>
           <form class="col" data-form="settings">
-          <section class="card">${deco('Destination', '志')}${cardHead('target', '目的地', '「きょう」の一番上と、各項目の下に表示されます')}
+          <section class="card" data-tone="olive">${deco('Destination', '志')}${cardHead('target', '目的地', '「きょう」の一番上と、各項目の下に表示されます')}
             <div class="form">
               <label>3〜5年後にどうなっていたいか<textarea name="vision" rows="3">${esc(S.vision)}</textarea></label>
               <label>転職活動は、目的地にどうつながるか<input name="whyJob" value="${esc(why('job'))}"></label>
@@ -918,10 +918,10 @@
               <label>診断士は<input name="whyStudy" value="${esc(why('study'))}"></label>
             </div>
           </section>
-          <section class="card">${deco('My Facts', '實')}${cardHead('user', 'わたしの事実', '経歴や実績を1行に1つ。コーチの言葉やしんどい日に使います')}
+          <section class="card" data-tone="coral">${deco('My Facts', '實')}${cardHead('user', 'わたしの事実', '経歴や実績を1行に1つ。コーチの言葉やしんどい日に使います')}
             <div class="form"><textarea name="facts" rows="8" aria-label="わたしの事実" placeholder="例：〇〇の案件で、△△を□□まで改善した">${esc(S.facts.join('\n'))}</textarea></div>
           </section>
-          <section class="card">${deco('Roles', '役')}${cardHead('flag', '主役と目安')}
+          <section class="card" data-tone="yellow">${deco('Roles', '役')}${cardHead('flag', '主役と目安')}
             <div class="form">
               <label>主役の名前<input name="mainLabel" value="${esc(S.mainLabel)}"></label>
               <div class="pair">
@@ -930,10 +930,10 @@
               </div>
             </div>
           </section>
-          <section class="card">${deco('Interests', '趣')}${cardHead('news', 'designing', 'おすすめ順に使うキーワード（読点で区切る）')}
+          <section class="card" data-tone="sand">${deco('Interests', '趣')}${cardHead('news', 'designing', 'おすすめ順に使うキーワード（読点で区切る）')}
             <div class="form"><input name="interests" aria-label="気になるキーワード" value="${esc(interests().join('、'))}"></div>
           </section>
-          <section class="card">${deco('Channels', '連')}${cardHead('link', '発信先')}
+          <section class="card" data-tone="mint">${deco('Channels', '連')}${cardHead('link', '発信先')}
             <div class="form">
               <label>note のURL<input type="url" name="lNote" value="${esc(S.links.note)}"></label>
               <label>YouTube のURL<input type="url" name="lYoutube" value="${esc(S.links.youtube)}"></label>
