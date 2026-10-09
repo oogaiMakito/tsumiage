@@ -138,10 +138,10 @@
     const studyWin = new Set();
     out.wins = list('wins').sort((x, y) => (x.ts || 0) - (y.ts || 0)).filter(w => {
       if (!w.key) return true;
-      if (studyWin.has(w.key)) return false; // 同じ日の「ふりかえり」は1件にまとめる
+      if (studyWin.has(w.key)) return false; // 同じ日の「ふりかえり」、同じ記事の「読んだ」は1件にまとめる
       studyWin.add(w.key);
       return true;
-    }).map(w => (w.key && out.studyDays[w.key.slice(6)] ? { ...w, text: `診断士の用語と問題を${out.studyDays[w.key.slice(6)]}回ふりかえった` } : w));
+    }).map(w => (w.key && w.key.startsWith('study-') && out.studyDays[w.key.slice(6)] ? { ...w, text: `診断士の用語と問題を${out.studyDays[w.key.slice(6)]}回ふりかえった` } : w));
     out.read = { ...(b.read || {}), ...(a.read || {}) };
     const src = (a.settingsAt || 0) > (b.settingsAt || 0) ? a : b; // 同じならリモートを優先
     for (const k of SETTING_KEYS) if (src[k] !== undefined) out[k] = src[k];
@@ -398,45 +398,88 @@
   }
   function refreshQQ() { document.querySelectorAll('.qq-slot').forEach(el => { el.innerHTML = qqHtml(); }); }
 
-  // ── designing のおすすめ ──
-  // designing.jp の RSS はブラウザから直接読める（CORS許可あり）。
+  // ── 読みもの（designing・M-HAND Study・iDID インタビュー） ──
+  // designing の RSS と iDID の WordPress API は、ブラウザから直接読める（CORS許可あり）。
+  // note はブラウザから直接読めないため、無料の中継（allorigins）を通す。止まっていたら data.js の一覧を使う。
   // 要約は編集部の概要文と、本文から関心キーワードを含む文を抜き出したもの。AIは使わない。
-  const FEED_URL = 'https://designing.jp/feed.xml';
-  const FEED_KEY = 'tsumiage.feed';
   const FEED_TTL = 12 * 3600 * 1000;
   const DEFAULT_INTERESTS = ['クリエイティブディレクション', 'ディレクター', 'ブランディング', '経営', '組織', '事業', '中小企業', '地域', 'キャリア', 'チーム', 'マネジメント', '音楽', 'AI', '言葉'];
-  let feed = (() => { try { return JSON.parse(localStorage.getItem(FEED_KEY)); } catch (e) { return null; } })();
-  let feedState = 'idle';
+  // 読む前の問い：読み物ごとに「何を持ち帰るか」を決めてから開く。日替わりで1つ出す
+  const SOURCES = {
+    designing: {
+      name: 'designing', sub: '今日の1本', key: 'tsumiage.feed', link: /^https:\/\/designing\.jp\//,
+      about: 'designing（デザインビジネスマガジン）',
+      lens: ['この会社・人は、何を捨てて何に集中したか', '自分の顧客（中小企業の経営者）に話すなら、どの1文を使うか', '診断士の用語で言い換えると、どの考え方に当たるか'],
+      async load() {
+        const xml = await getXml('https://designing.jp/feed.xml');
+        return rssItems(xml, it => ({ desc: plainText(it('description')), text: plainText(it('content:encoded')).slice(0, 8000) }));
+      },
+    },
+    mhand: {
+      name: 'M-HAND Study', sub: '制作会社の組織と仕組み', key: 'tsumiage.feed.mhand-study', link: /^https:\/\/note\.com\/mhand_note\/n\//,
+      about: 'エムハンド（Web制作会社）の note マガジン「M-HAND Study」（制度・評価・業務フローなど組織の仕組みのシリーズ）',
+      lens: ['この仕組みは、誰のどんな困りごとを解くためにつくられたか', '仕事が1人に偏ったとき、この組織では誰がどう調整しそうか', '自分が入るとしたら、この仕組みのどこで力を出せるか'],
+      async load() {
+        const rss = 'https://note.com/mhand_note/m/m4b67599d18bc/rss';
+        let items = [];
+        try { items = rssItems(await getXml(`https://api.allorigins.win/raw?url=${encodeURIComponent(rss)}`), () => ({})); } catch (e) { /* 中継が止まっていても一覧は出す */ }
+        const seen = new Set(items.map(i => i.link));
+        return [...items, ...MHAND_SNAPSHOT.filter(s => !seen.has(s.link)).map(s => ({ id: s.link, ...s }))];
+      },
+    },
+    idid: {
+      name: 'iDID Interview', sub: 'つくり手の判断と転機', key: 'tsumiage.feed.idid', link: /^https:\/\/idid\.team\/articles\/interview\//,
+      about: 'iDID（クリエイターのための情報メディア）のインタビュー',
+      lens: ['この人が迷った場面はどこか。自分ならどちらを選ぶか', '仕事の取り方・チームのつくり方で、まねできることは何か', '自分の経歴（売る→つくる→束ねる）と重なる転機はあるか'],
+      async load() {
+        const res = await fetch('https://idid.team/wp-json/wp/v2/posts?categories=4&per_page=30&_fields=link,title,date_gmt,excerpt,content', { cache: 'no-cache' });
+        if (!res.ok) throw new Error(String(res.status));
+        return (await res.json()).map(p => ({
+          id: p.link, link: p.link, title: plainText(p.title.rendered), date: Date.parse(`${p.date_gmt}Z`) || 0,
+          desc: plainText(p.excerpt.rendered).replace(/\s*\[[…\.]+\]\s*$/, ''), text: plainText(p.content.rendered).slice(0, 8000),
+        }));
+      },
+    },
+  };
+  const SRC_IDS = Object.keys(SOURCES);
+  const feeds = {}, feedState = {};
+  for (const s of SRC_IDS) {
+    try { feeds[s] = JSON.parse(localStorage.getItem(SOURCES[s].key)); } catch (e) { feeds[s] = null; }
+    feedState[s] = 'idle';
+  }
 
   function plainText(html) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     doc.querySelectorAll('br, p, h2, h3, li').forEach(el => el.after('\n'));
     return (doc.body.textContent || '').replace(/\n\s*\n+/g, '\n').trim();
   }
-  async function fetchFeed(force = false) {
-    if (feedState === 'loading') return;
-    if (!force && feed && Date.now() - feed.at < FEED_TTL) return;
-    feedState = 'loading';
-    if (!feed) refreshFeedSlots();
+  async function getXml(url) {
+    const res = await fetch(url, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(String(res.status));
+    return new DOMParser().parseFromString(await res.text(), 'application/xml');
+  }
+  function rssItems(xml, extra) {
+    return [...xml.getElementsByTagName('item')].map(it => {
+      const get = tag => (it.getElementsByTagName(tag)[0] || {}).textContent || '';
+      return { id: get('guid') || get('link'), title: get('title').trim(), link: get('link').trim(), date: Date.parse(get('pubDate')) || 0, ...extra(get) };
+    });
+  }
+  async function fetchSource(s, force) {
+    const src = SOURCES[s];
+    if (feedState[s] === 'loading') return;
+    if (!force && feeds[s] && Date.now() - feeds[s].at < FEED_TTL) return;
+    feedState[s] = 'loading';
+    if (!feeds[s]) refreshFeedSlots();
     try {
-      const res = await fetch(FEED_URL, { cache: 'no-cache' });
-      if (!res.ok) throw new Error(String(res.status));
-      const xml = new DOMParser().parseFromString(await res.text(), 'application/xml');
-      const items = [...xml.getElementsByTagName('item')].map(it => {
-        const get = tag => (it.getElementsByTagName(tag)[0] || {}).textContent || '';
-        return {
-          id: get('guid') || get('link'), title: get('title').trim(), link: get('link').trim(),
-          date: Date.parse(get('pubDate')) || 0, desc: plainText(get('description')),
-          text: plainText(get('content:encoded')).slice(0, 8000),
-        };
-      }).filter(i => i.title && /^https:\/\/designing\.jp\//.test(i.link));
+      const items = (await src.load()).map(i => ({ desc: '', text: '', ...i })).filter(i => i.title && src.link.test(i.link));
       if (!items.length) throw new Error('empty');
-      feed = { at: Date.now(), items };
-      try { localStorage.setItem(FEED_KEY, JSON.stringify(feed)); } catch (e) { /* 容量不足でも表示は続ける */ }
-      feedState = 'idle';
-    } catch (e) { feedState = 'error'; }
+      feeds[s] = { at: Date.now(), items };
+      try { localStorage.setItem(src.key, JSON.stringify(feeds[s])); } catch (e) { /* 容量不足でも表示は続ける */ }
+      feedState[s] = 'idle';
+    } catch (e) { feedState[s] = 'error'; }
     refreshFeedSlots();
   }
+  const fetchFeed = (force = false) => SRC_IDS.forEach(s => fetchSource(s, force));
 
   // 記事と用語を結びつけるとき、日常語に近い別名は使わない
   const COMMON_WORDS = new Set(['プロダクト', 'プライス', 'プレイス', 'プロモーション', '4C', '資産', '負債', '純資産', '整理', '整頓', '清掃', '清潔', 'しつけ', '自己実現', 'リピート', '導入期', '成長期', '成熟期', '衰退期', '共通目的', 'コミュニケーション', '人工物', '移行', '解凍', 'シナジー', '顧客', '競合', '自社', '差別化戦略', '回収期間', '割引率', '現在価値', '発注費', '保管費', '在庫管理']);
@@ -448,7 +491,8 @@
       const inTitle = it.title.includes(k), inDesc = it.desc.includes(k), n = Math.min(3, it.text.split(k).length - 1);
       if (inTitle || inDesc || n) { hits.push(k); sc += (inTitle ? 3 : 0) + (inDesc ? 2 : 0) + n; }
     }
-    const terms = GLOSSARY.filter(t => [t.t, ...(t.y || [])].some(k => k.length >= 3 && !COMMON_WORDS.has(k) && it.text.includes(k))).slice(0, 3);
+    const body = `${it.title}\n${it.text}`;
+    const terms = GLOSSARY.filter(t => [t.t, ...(t.y || [])].some(k => k.length >= 3 && !COMMON_WORDS.has(k) && body.includes(k))).slice(0, 3);
     sc += terms.length * 1.5;
     sc += Math.max(0, 4 - (Date.now() - it.date) / 864e5 / 14); // 新しい記事を少しだけ優先
     return { sc, hits, terms };
@@ -458,12 +502,19 @@
     const withHit = sents.filter(s => hits.some(k => s.includes(k)));
     return (withHit.length ? withHit : sents).slice(0, 2);
   }
-  function recommended() {
-    if (!feed) return [];
+  function recommended(s) {
+    if (!feeds[s]) return [];
     const read = S.read || {};
-    return feed.items.filter(i => !read[i.id]).map(i => ({ ...i, ...scoreItem(i) })).sort((a, b) => b.sc - a.sc);
+    return feeds[s].items.filter(i => !read[i.id]).map(i => ({ ...i, src: s, ...scoreItem(i) })).sort((a, b) => b.sc - a.sc);
   }
-  const articlePrompt = it => `designing（デザインビジネスマガジン）の記事「${it.title}」について教えてください。\nURL：${it.link}\n\n概要：${it.desc}\n\n本文の冒頭：\n${it.text.slice(0, 900)}\n\n次の3つを、平易な日本語でお願いします。\n1. 3行の要約\n2. 転職活動中のWebディレクター（中小企業診断士を勉強中）が、仕事に活かせる示唆を3つ\n3. noteに書くとしたら、どんな切り口があるか1つ`;
+  const lensOf = s => pickDaily(SOURCES[s].lens, `lens-${s}`);
+  const articlePrompt = it => {
+    const src = SOURCES[it.src];
+    return `${src.about}の記事「${it.title}」について教えてください。\nURL：${it.link}\n\n${it.desc ? `概要：${it.desc}\n\n` : ''}${it.text ? `本文の冒頭：\n${it.text.slice(0, 900)}\n\n` : '本文はURLから読んでください。\n\n'}読む前に立てた問い：${lensOf(it.src)}\n\n次の4つを、平易な日本語でお願いします。\n1. 3行の要約\n2. 上の問いへの、記事から読み取れる答え\n3. 転職活動中のWebディレクター（中小企業診断士を勉強中）が、仕事に活かせる示唆を3つ\n4. 理解を確かめる問いを2つ（答えは書かずに。私が答えたら採点してください）`;
+  };
+  // その日に読んだ記事（積み上げの記録）をまとめて、共通点を考える
+  const readToday = () => S.wins.filter(w => w.date === ymd() && w.key && w.key.startsWith('read:'));
+  const linkPrompt = list => `今日、次の${list.length}本を読みました。\n\n${list.map((w, i) => `${i + 1}. ${w.text}`).join('\n')}\n\n次の3つを、平易な日本語でお願いします。\n1. ${list.length}本に共通する考え方を1つ\n2. 食い違っている点があれば1つ\n3. 明日の仕事（または面接）で試せる行動を1つ。いつ・どこで・何をするかまで`;
   function articleCard(it, { compact = false } = {}) {
     const d = new Date(it.date);
     const reason = [
@@ -474,34 +525,53 @@
     return `<article class="article">
       <p class="article-date">${d.getFullYear() !== new Date().getFullYear() ? `${d.getFullYear()}年` : ''}${d.getMonth() + 1}月${d.getDate()}日</p>
       <h3 class="article-title"><a href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a></h3>
-      <p class="article-desc">${esc(it.desc)}</p>
+      ${it.desc ? `<p class="article-desc">${esc(it.desc)}</p>` : ''}
       ${lines.length ? `<ul class="article-lines">${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
       ${reason ? `<p class="article-why">おすすめの理由：${esc(reason)}</p>` : ''}
+      <p class="article-lens"><small>読む前の問い</small>${esc(lensOf(it.src))}</p>
       ${!compact && it.terms.length ? `<div class="row">${it.terms.map(t => `<button class="chip" data-act="show-term" data-id="${esc(t.id)}">${esc(t.t)}</button>`).join('')}</div>` : ''}
+      <form class="form form-inline art-take" data-form="art-read" data-id="${esc(it.id)}">
+        <input name="take" maxlength="120" placeholder="学びを1行で（なくても記録できます）" aria-label="「${esc(it.title)}」から学んだこと">
+        <button class="btn">読んだ</button>
+      </form>
       <div class="term-acts">
-        <button class="btn" data-act="art-read" data-id="${esc(it.id)}">読んだ</button>
         <button class="btn-line" data-act="art-idea" data-id="${esc(it.id)}">noteのネタにする</button>
-        <a class="link" href="${claudeUrl(articlePrompt(it))}" target="_blank" rel="noopener">Claudeで詳しく要約</a>
+        <a class="link" href="${claudeUrl(articlePrompt(it))}" target="_blank" rel="noopener">Claudeで要約と確認問題</a>
         ${compact ? '' : `<button class="btn-icon" data-act="art-skip" data-id="${esc(it.id)}">今回は見送る</button>`}
       </div></article>`;
   }
-  function feedSlotHtml(mode) {
+  function feedSlotHtml(mode, s = 'designing') {
+    const feed = feeds[s], name = SOURCES[s].name;
     if (!feed) {
-      return feedState === 'error'
-        ? '<p class="empty">designing の記事を読み込めませんでした。電波のよい場所で、もう一度読み込んでください。</p><div class="term-acts"><button class="btn-line" data-act="feed-retry">もう一度読み込む</button></div>'
-        : '<p class="empty">designing の記事を読み込んでいます。</p>';
+      return feedState[s] === 'error'
+        ? `<p class="empty">${esc(name)} の記事を読み込めませんでした。電波のよい場所で、もう一度読み込んでください。</p><div class="term-acts"><button class="btn-line" data-act="feed-retry">もう一度読み込む</button></div>`
+        : `<p class="empty">${esc(name)} の記事を読み込んでいます。</p>`;
     }
-    const recs = recommended();
-    if (!recs.length) return '<p class="empty">おすすめの記事はすべて読みました。新しい記事が出たら、ここに表示します。</p>';
+    const recs = recommended(s);
+    if (!recs.length) return `<p class="empty">${esc(name)} の記事はすべて読みました。新しい記事が出たら、ここに表示します。</p>`;
     if (mode === 'today') return articleCard(recs[0], { compact: true });
     const at = new Date(feed.at);
     return `${recs.slice(0, 5).map(it => articleCard(it)).join('')}
-      <p class="meta feed-foot">${feedState === 'error' ? '最新の記事を読み込めなかったため、前回の内容を表示しています。' : ''}
+      <p class="meta feed-foot">${feedState[s] === 'error' ? '最新の記事を読み込めなかったため、前回の内容を表示しています。' : ''}
         記事一覧の更新：${at.getMonth() + 1}月${at.getDate()}日 ${pad(at.getHours())}:${pad(at.getMinutes())}
         <button class="btn-quiet" data-act="feed-retry">いま更新する</button></p>`;
   }
-  function refreshFeedSlots() { document.querySelectorAll('.feed-slot').forEach(el => { el.innerHTML = feedSlotHtml(el.dataset.mode); }); }
-  const feedItem = id => feed && feed.items.find(i => i.id === id);
+  // きょうの画面：3つの読み物から1本ずつ。2本以上読んだら、つなげて考えるリンクを出す
+  function todayReadHtml() {
+    const done = readToday();
+    return `${SRC_IDS.map(s => `<div class="read-sec"><p class="read-src">${esc(SOURCES[s].name)}<span>${esc(SOURCES[s].sub)}</span></p>
+        <div class="feed-slot" data-mode="today" data-src="${s}">${feedSlotHtml('today', s)}</div></div>`).join('')}
+      ${done.length >= 2 ? `<p class="read-link"><a class="link" href="${claudeUrl(linkPrompt(done))}" target="_blank" rel="noopener">今日読んだ${done.length}本をつなげて考える（Claude）</a></p>`
+        : `<p class="meta read-link">今日読んだ記事：${done.length}本。2本読むと、共通点を考えるリンクが出ます。</p>`}`;
+  }
+  function refreshFeedSlots() { document.querySelectorAll('.feed-slot').forEach(el => { el.innerHTML = feedSlotHtml(el.dataset.mode, el.dataset.src); }); }
+  const feedItem = id => {
+    for (const s of SRC_IDS) {
+      const it = feeds[s] && feeds[s].items.find(i => i.id === id);
+      if (it) return { ...it, src: s };
+    }
+    return null;
+  };
 
   // ── 部品 ──
   const ICONS = {
@@ -703,8 +773,8 @@
             <p class="meta qq-foot">${studied ? `今日は${studied}回ふりかえりました。` : ''}<a class="link" href="#/study">用語さがしと計算ふりかえりへ</a></p>
           </section>
           <section class="card" data-tone="sand">
-            ${deco('Today&rsquo;s Read', '讀')}${cardHead('news', 'designing', '今日の1本')}
-            <div class="feed-slot" data-mode="today">${feedSlotHtml('today')}</div>
+            ${deco('Today&rsquo;s Read', '讀')}${cardHead('news', '今日の読みもの', '問いを1つ持って読み、学びを1行残す')}
+            ${todayReadHtml()}
           </section>
         </div>
       </div>
@@ -930,7 +1000,7 @@
               </div>
             </div>
           </section>
-          <section class="card" data-tone="sand">${deco('Interests', '趣')}${cardHead('news', 'designing', 'おすすめ順に使うキーワード（読点で区切る）')}
+          <section class="card" data-tone="sand">${deco('Interests', '趣')}${cardHead('news', '読みもの', 'おすすめ順に使うキーワード（読点で区切る）')}
             <div class="form"><input name="interests" aria-label="気になるキーワード" value="${esc(interests().join('、'))}"></div>
           </section>
           <section class="card" data-tone="mint">${deco('Channels', '連')}${cardHead('link', '発信先')}
@@ -1071,12 +1141,6 @@
         const t = termById(id); if (t) addWin('study', `Xで「${t.t}」を紹介した`); break;
       }
       case 'x-quiz': if (qq) addWin('study', `Xで診断士の問題を出題した`); break;
-      case 'art-read': {
-        const it = feedItem(id); if (!it) return;
-        S.read = { ...S.read, [id]: ymd() };
-        addWin('other', `designing「${it.title}」を読んだ`);
-        render(); break;
-      }
       case 'art-idea': {
         const it = feedItem(id); if (!it) return;
         S.ideas.push({ id: uid(), cat: 'note', title: `「${it.title}」を読んで考えたこと`, stage: 0, created: ymd(), src: it.link, u: Date.now() });
@@ -1146,6 +1210,13 @@
         save(); render(); toast('次の1歩を決めました。'); break;
       case 'pub':
         addWin(f.dataset.cat, `「${d.title.trim()}」を公開した`, { pub: true }); render(); break;
+      case 'art-read': { // 学びの1行は積み上げの記録に残し、その日の「つなげて考える」にも使う
+        const it = feedItem(f.dataset.id); if (!it) return;
+        const take = (d.take || '').trim();
+        S.read = { ...S.read, [it.id]: ymd() };
+        addWin('other', `${SOURCES[it.src].name}「${it.title}」を読んだ${take ? `。学び：${take}` : ''}`, { key: `read:${it.id}` });
+        render(); break;
+      }
       case 'idea':
         S.ideas.push({ id: uid(), cat: d.cat, title: d.title.trim(), stage: 0, created: ymd(), u: Date.now() });
         save(); render(); toast('ネタ帳に追加しました。'); break;

@@ -435,3 +435,30 @@ const QUIZ_TF = [
   { q: '「スタック・イン・ザ・ミドル」とは、どの基本戦略にも徹しきれない状態のことである。', a: true, exp: 'コスト・リーダーシップにも差別化にも徹しきれず、どっちつかずになる状態。', ref: 'generic' },
   { q: '新規顧客の獲得には、既存顧客の維持より小さなコストで済むといわれる。', a: false, exp: '一般に、新規獲得には既存維持の約5倍のコストがかかるといわれる。', ref: 'relationship' },
 ];
+
+// note のマガジン「M-HAND Study」の記事一覧（2026-10-09 時点）。
+// note はブラウザから直接読めず、中継も止まることがあるため、読み込めないときはこの一覧を使う。
+const MHAND_SNAPSHOT = [
+  { title: "入社から1年半の軌跡／思考の構造化と自分だけのデザイン領域", link: "https://note.com/mhand_note/n/n39331aa0f14f", date: 1778575606000 },
+  { title: "【社内レポ👀】感謝が飛び交う温かい社内文化「エムホーム」🏠✨", link: "https://note.com/mhand_note/n/ne932cf53a063", date: 1771997344000 },
+  { title: "【広報レポ👀】CSS Nite セミナー「デザインを\"使う\"視点で成果を導く」ダイジェスト", link: "https://note.com/mhand_note/n/n6b97d5a1beec", date: 1742879546000 },
+  { title: "なぜエムハンドにゆるキャラが？ 組織の一体感を育むコミュニケーション戦略", link: "https://note.com/mhand_note/n/na249fe40d57d", date: 1760510442000 },
+  { title: "デザイナーのためのデザイン論／思考と手段を支える「概念と構造」", link: "https://note.com/mhand_note/n/n4ddde1907aa6", date: 1758381926000 },
+  { title: "できるがつづく／エムハンドWebディレクターのリアル", link: "https://note.com/mhand_note/n/n7a2941a79843", date: 1758004803000 },
+  { title: "マーケティングのノウハウを蓄積／共有するための仕組み", link: "https://note.com/mhand_note/n/n48cdeda188fa", date: 1743650214000 },
+  { title: "エムハンドの「仕組み」まとめてみた", link: "https://note.com/mhand_note/n/n1490261ad905", date: 1730132359000 },
+  { title: "採用サイトに必要なコミュニケーション設計", link: "https://note.com/mhand_note/n/nb9bd83a10417", date: 1719303958000 },
+  { title: "社員座談会｜エムハンドはいま、Web集客をどのように支援するのか", link: "https://note.com/mhand_note/n/n5627fddb1ca3", date: 1713861294000 },
+  { title: "皆で創るデザインシステム", link: "https://note.com/mhand_note/n/n78701971286a", date: 1710752720000 },
+  { title: "ファンを作る社内ラジオ", link: "https://note.com/mhand_note/n/n7726b9c33730", date: 1703753090000 },
+  { title: "新入社員座談会｜入社1ヵ月後の私たち", link: "https://note.com/mhand_note/n/na20de5a747fc", date: 1698308784000 },
+  { title: "ディレクターの新人研修について", link: "https://note.com/mhand_note/n/n43a9ed0a1209", date: 1697186853000 },
+  { title: "広報活動と採用の仕組み化", link: "https://note.com/mhand_note/n/n7fc6aa412978", date: 1694173449000 },
+  { title: "MARPとWARP", link: "https://note.com/mhand_note/n/na90e1a1482f0", date: 1693337540000 },
+  { title: "新卒デザイナーとAfter Effectsの7日間", link: "https://note.com/mhand_note/n/n542f77c617f4", date: 1692685046000 },
+  { title: "エムハンド新卒デザイナーの入社1ヵ月", link: "https://note.com/mhand_note/n/nc8561dee9e3b", date: 1683597126000 },
+  { title: "思考の地図", link: "https://note.com/mhand_note/n/n9db82d0f80da", date: 1680490358000 },
+  { title: "チェックバックの視点", link: "https://note.com/mhand_note/n/na08e77641d9c", date: 1674629414000 },
+  { title: "エムハンドのデザインができるまで", link: "https://note.com/mhand_note/n/n6bdd4a1f8f07", date: 1673498241000 },
+  { title: "デザインで意識することについて", link: "https://note.com/mhand_note/n/n0550941c61e7", date: 1665024081000 },
+];

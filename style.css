@@ -465,3 +465,12 @@ dialog .en { font-size: 20px; margin-bottom: 6px; }
 .card[data-tone] .btn-line:hover, .card[data-tone] .chip:hover, .card[data-tone] .mini:hover { background: #ffffff; }
 /* コーチの吹き出しの横の丸は、コーチのカードと同じ色 */
 .avatar { background: var(--t-olive); color: #1c1c1e; }
+
+/* 今日の読みもの */
+.read-sec + .read-sec { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--rule); }
+.read-src { font-size: 12px; font-weight: 700; letter-spacing: .04em; margin-bottom: 6px; }
+.read-src span { font-weight: 400; color: var(--sub); margin-left: 8px; }
+.article-lens { font-size: 12px; background: rgba(255, 255, 255, .5); border-left: 3px solid var(--primary); border-radius: 0 12px 12px 0; padding: 6px 12px; margin-top: 8px; }
+.article-lens small { display: block; font-size: 10px; color: var(--sub); }
+.art-take { margin-top: 10px; }
+.read-link { margin-top: 14px; }
