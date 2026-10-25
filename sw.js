@@ -1,5 +1,5 @@
 // 画面の部品をキャッシュして、電波がなくても開けるようにする。
-const CACHE = 'tsumiage-v10';
+const CACHE = 'tsumiage-v13';
 const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'data.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {

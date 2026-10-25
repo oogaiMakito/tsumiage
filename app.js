@@ -1,35 +1,47 @@
 'use strict';
 (() => {
   const KEY = 'tsumiage.v1';
+  // 主役は「PMへの道」。「転職活動」は過去の記録の表示用に残す
   const CATS = {
-    job: '転職活動', note: 'note', music: '音楽', study: '診断士', other: 'そのほか',
+    pm: 'PMへの道', mind: 'こころ', note: 'note', music: '音楽', study: '診断士', other: 'そのほか', job: '転職活動',
   };
+  const MAIN = 'pm';
   const STAGES = { note: ['ネタ', '下書き', '公開'], music: ['ネタ', '制作中', '完成・公開'] };
   const INTERVALS = [1, 3, 7, 14, 30, 60];
-  const TINY = ['10分だけ外を歩く', '診断士を1問だけ解く', '好きな曲を1曲聴く', '今日は早めに寝る'];
+  const TINY = ['10分だけ外を歩く', '寝る前に3行だけ書く', 'PMの用語を1つだけ読む', '好きな曲を1曲聴く', '今日は早めに寝る'];
+  const MOODS = ['', 'とてもつらい', 'つらい', 'ふつう', 'よい', 'とてもよい'];
   const MILESTONES = [10, 30, 50, 100, 200, 300, 500, 1000];
 
   const blank = () => ({
-    version: 1,
-    mainLabel: '転職活動',
+    version: 3,
+    mainLabel: 'PMへの道',
     goals: { note: 1, music: 1 },
     facts: [],
     links: { note: '', youtube: '', x: '' },
     tasks: [], wins: [], ideas: [],
     study: {}, studyDays: {}, myTerms: [],
     interests: [], read: {},
-    vision: '', why: { job: '', note: '', music: '', study: '' },
+    vision: '', why: { pm: '', job: '', note: '', music: '', study: '' },
+    journal: [], worries: [], mood: {}, pmDays: {}, learn: { goal: 35, from: '' },
     deleted: {}, settingsAt: 0,
   });
+  // 転職活動のころ（v1）・入社準備のころ（v2）のデータを、「PMへの道」が主役の形にそろえる
+  function migrate(st) {
+    if ((st.version || 1) < 3) {
+      if (!st.mainLabel || st.mainLabel === '転職活動' || st.mainLabel === '入社準備・PM') { st.mainLabel = 'PMへの道'; st.settingsAt = Date.now(); }
+      st.version = 3;
+    }
+    return st;
+  }
 
   let S = load();
   let quiz = null;
-  let searchQ = '';
+  const searchQ = { shindan: '', pm: '' };
 
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) return { ...blank(), ...JSON.parse(raw) };
+      if (raw) return migrate({ ...blank(), ...JSON.parse(raw) });
     } catch (e) { /* 保存が使えない環境でも表示はできる */ }
     return blank();
   }
@@ -50,7 +62,7 @@
   // 両方の端末で変更があったときは、記録を id ごとに突き合わせて合体させる。
   const SYNC_KEY = 'tsumiage.sync';
   const SYNC_PATH = 'tsumiage-data.json';
-  const SETTING_KEYS = ['mainLabel', 'goals', 'facts', 'links', 'interests', 'vision', 'why'];
+  const SETTING_KEYS = ['mainLabel', 'goals', 'facts', 'links', 'interests', 'vision', 'why', 'learn'];
   let sync = (() => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch (e) { return {}; } })();
   const syncReady = () => Boolean(sync.owner && sync.repo && sync.token && sync.pass);
   const saveSync = () => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) { /* 無視 */ } };
@@ -79,7 +91,7 @@
     try {
       const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(file.iv) }, await deriveKey(file.salt), fromB64(file.data));
       if (sync.salt !== file.salt) { sync.salt = file.salt; saveSync(); }
-      return { ...blank(), ...JSON.parse(td.decode(pt)) };
+      return migrate({ ...blank(), ...JSON.parse(td.decode(pt)) });
     } catch (e) { throw new SyncError('pass'); }
   }
 
@@ -128,6 +140,12 @@
     out.tasks = list('tasks');
     out.ideas = list('ideas');
     out.myTerms = list('myTerms');
+    out.journal = list('journal');
+    out.worries = list('worries');
+    out.mood = { ...(b.mood || {}) };
+    for (const [d, r] of Object.entries(a.mood || {})) { const o = out.mood[d]; if (!o || (r.u || 0) > (o.u || 0)) out.mood[d] = r; }
+    out.pmDays = { ...(b.pmDays || {}) };
+    for (const [d, n] of Object.entries(a.pmDays || {})) out.pmDays[d] = Math.max(n, out.pmDays[d] || 0);
     out.study = { ...(b.study || {}) };
     for (const [id, r] of Object.entries(a.study || {})) {
       const o = out.study[id];
@@ -141,7 +159,8 @@
       if (studyWin.has(w.key)) return false; // 同じ日の「ふりかえり」、同じ記事の「読んだ」は1件にまとめる
       studyWin.add(w.key);
       return true;
-    }).map(w => (w.key && w.key.startsWith('study-') && out.studyDays[w.key.slice(6)] ? { ...w, text: `診断士の用語と問題を${out.studyDays[w.key.slice(6)]}回ふりかえった` } : w));
+    }).map(w => (w.key && w.key.startsWith('study-') && out.studyDays[w.key.slice(6)] ? { ...w, text: `診断士の用語と問題を${out.studyDays[w.key.slice(6)]}回ふりかえった` }
+      : w.key && w.key.startsWith('pm-') && out.pmDays[w.key.slice(3)] ? { ...w, text: `PM・AIの用語を${out.pmDays[w.key.slice(3)]}回ふりかえった` } : w));
     out.read = { ...(b.read || {}), ...(a.read || {}) };
     const src = (a.settingsAt || 0) > (b.settingsAt || 0) ? a : b; // 同じならリモートを優先
     for (const k of SETTING_KEYS) if (src[k] !== undefined) out[k] = src[k];
@@ -213,7 +232,8 @@
   function hash(str) { let h = 2166136261; for (const c of str) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
   const pickDaily = (arr, salt = '') => (arr.length ? arr[hash(ymd() + salt) % arr.length] : null);
   const shuffle = arr => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  const catOptions = sel => Object.entries(CATS).map(([k, v]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${v}</option>`).join('');
+  const catLabel = c => (c === MAIN ? (S.mainLabel || CATS[MAIN]) : CATS[c] || '');
+  const catOptions = sel => Object.keys(CATS).filter(k => k !== 'job' || k === sel).map(k => `<option value="${k}"${k === sel ? ' selected' : ''}>${esc(catLabel(k))}</option>`).join('');
 
   let toastTimer;
   function toast(msg) {
@@ -235,13 +255,18 @@
     while (xLen(text) > 280) { lines[lines.length - 1] = lines[lines.length - 1].slice(0, -2) + '…'; text = join(); }
     return text;
   }
-  const termPost = t => fitX([`【今日の1語｜中小企業診断士】`, `■ ${t.t}`, t.one, t.work ? `仕事でいうと：${t.work}` : ''], '#中小企業診断士 #1日1語');
+  const isPm = t => t && t.d === 'pm';
+  const termPost = t => (isPm(t)
+    ? fitX([`【今日の1語｜PM・生成AI】`, `■ ${t.t}`, t.one, t.work ? `Web制作でいうと：${t.work}` : ''], '#プロジェクトマネジメント #生成AI #1日1語')
+    : fitX([`【今日の1語｜中小企業診断士】`, `■ ${t.t}`, t.one, t.work ? `仕事でいうと：${t.work}` : ''], '#中小企業診断士 #1日1語'));
   const quizPost = q => fitX([`【今日の1問｜中小企業診断士】`, q.q,
     q.choices.length === 2 ? '○か×か？' : q.choices.map((c, i) => `${'ABCD'[i]}. ${c}`).join('\n'), '答えはリプ欄で。'], '#中小企業診断士 #1日1問');
   const why = cat => (S.why && S.why[cat]) || '';
   const whyHtml = cat => (why(cat) ? `<p class="why">目的地へ：${esc(why(cat))}</p>` : '');
   const claudeUrl = prompt => `https://claude.ai/new?q=${encodeURIComponent(prompt)}`;
-  const termPrompt = word => `中小企業診断士の勉強をしています。「${word}」について、次の順で平易な日本語で解説してください。\n1. 一言でいうと\n2. 詳しい解説（提唱者や関連する用語も）\n3. 試験で問われやすいポイント\n4. Webディレクターの仕事に置き換えた例`;
+  const termPrompt = (word, d = 'shindan') => (d === 'pm'
+    ? `Web制作のディレクターから、大企業のシステム・生成AI案件のプロジェクトマネージャーになる準備をしています。「${word}」について、次の順で平易な日本語で解説してください。\n1. 一言でいうと\n2. 詳しい解説（関連する用語も）\n3. 現場でつまずきやすいポイント\n4. Web制作の経験に置き換えた例\n5. 理解を確かめる問いを1つ（答えは書かずに。私が答えたら採点してください）`
+    : `中小企業診断士の勉強をしています。「${word}」について、次の順で平易な日本語で解説してください。\n1. 一言でいうと\n2. 詳しい解説（提唱者や関連する用語も）\n3. 試験で問われやすいポイント\n4. Webディレクターの仕事に置き換えた例`);
 
   // ── 積み上げ ──
   const winsSince = from => S.wins.filter(w => w.date >= from);
@@ -270,20 +295,25 @@
       const latest = week[week.length - 1];
       lines.push(`今週は${week.length}件、前に進みました。直近は「${latest.text}」。`);
     }
+    const yj = (S.journal || []).find(j => j.date === addDays(ymd(), -1));
+    if (yj && yj.next) lines.push(`昨日の自分が決めた、今日の最初の1歩：「${yj.next}」。`);
     const fact = pickDaily(S.facts, 'fact');
     return { lines, fact };
   }
 
   // ── 用語 ──
-  const allTerms = () => GLOSSARY.concat(S.myTerms.map(t => ({ ...t, mine: true })));
-  const termById = id => allTerms().find(t => t.id === id);
+  // d：'shindan'（診断士）か 'pm'（PM学習）。自分で登録した用語も d で分ける
+  const domOf = t => (t && t.d === 'pm' ? 'pm' : 'shindan');
+  const allTerms = (d = 'shindan') => (d === 'pm' ? PM_GLOSSARY : GLOSSARY)
+    .concat(S.myTerms.filter(t => domOf(t) === d).map(t => ({ ...t, mine: true })));
+  const termById = id => allTerms('shindan').concat(allTerms('pm')).find(t => t.id === id);
   const norm = s => String(s).normalize('NFKC').toLowerCase()
     .replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60))
     .replace(/[\s・･\-‐ー―（）()「」『』、。,.]/g, '');
-  function search(q) {
+  function search(q, d = 'shindan') {
     const n = norm(q);
     if (!n) return [];
-    return allTerms().map(t => {
+    return allTerms(d).map(t => {
       let sc = 0;
       for (const k of [t.t, ...(t.y || [])].map(norm)) {
         if (!k) continue;
@@ -296,19 +326,21 @@
       return { t, sc };
     }).filter(x => x.sc).sort((a, b) => b.sc - a.sc).map(x => x.t);
   }
-  const dueTerms = () => { const today = ymd(); return allTerms().filter(t => S.study[t.id] && S.study[t.id].due <= today); };
+  const dueTerms = (d = 'shindan') => { const today = ymd(); return allTerms(d).filter(t => S.study[t.id] && S.study[t.id].due <= today); };
   function review(id, ok, silent = false) {
     const r = S.study[id];
     const lv = ok ? (r ? Math.min(r.lv + 1, INTERVALS.length - 1) : 0) : 0;
     const today = ymd();
     S.study[id] = { lv, due: addDays(today, ok ? INTERVALS[lv] : 1), count: (r ? r.count : 0) + 1, last: today };
-    const n = (S.studyDays[today] || 0) + 1;
-    S.studyDays[today] = n;
-    const key = `study-${today}`;
-    const text = `診断士の用語と問題を${n}回ふりかえった`;
+    const pm = isPm(termById(id));
+    const days = pm ? (S.pmDays = S.pmDays || {}) : S.studyDays;
+    const n = (days[today] || 0) + 1;
+    days[today] = n;
+    const key = `${pm ? 'pm' : 'study'}-${today}`;
+    const text = pm ? `PM・AIの用語を${n}回ふりかえった` : `診断士の用語と問題を${n}回ふりかえった`;
     const w = S.wins.find(x => x.key === key);
     if (w) w.text = text;
-    else { S.wins.push({ id: uid(), date: today, ts: Date.now(), cat: 'study', text, key }); }
+    else { S.wins.push({ id: uid(), date: today, ts: Date.now(), cat: pm ? MAIN : 'study', text, key }); }
     save();
     if (!silent) toast(ok ? `今日${n}回目。${INTERVALS[lv]}日後にもう一度出します。` : `今日${n}回目。明日もう一度出します。`);
   }
@@ -323,9 +355,9 @@
     const list = shuffle(set);
     return { choices: list, answer: list.indexOf(answer) };
   }
-  function termQuestion() {
-    const pool = allTerms().filter(t => t.one);
-    const due = dueTerms().filter(t => t.one);
+  function termQuestion(d = 'shindan') {
+    const pool = allTerms(d).filter(t => t.one);
+    const due = dueTerms(d).filter(t => t.one);
     const t = due.length ? pick(due) : pick(pool);
     const same = shuffle(pool.filter(x => x.id !== t.id && x.s === t.s));
     const other = shuffle(pool.filter(x => x.id !== t.id && x.s !== t.s));
@@ -369,14 +401,16 @@
         exp: `ROE＝当期純利益÷自己資本×100＝${num(ni)}÷${num(eq)}×100＝${roe}%。総資本で割るとROAになる（${num(roe / 2.5)}%）。`, ref: 'roe' };
     },
   ];
-  function nextQuestion() {
+  function nextQuestion(d = 'shindan') {
+    if (d === 'pm') return { ...termQuestion('pm'), picked: null, d };
     const r = Math.random();
     const q = r < 0.45 ? termQuestion() : r < 0.8 ? tfQuestion() : pick(CALC_Q)();
-    return { ...q, picked: null };
+    return { ...q, picked: null, d };
   }
-  let qq = null;
-  function qqHtml() {
-    if (!qq) qq = nextQuestion();
+  const qqs = { shindan: null, pm: null };
+  function qqHtml(d = 'shindan') {
+    if (!qqs[d]) qqs[d] = nextQuestion(d);
+    const qq = qqs[d];
     const done = qq.picked !== null;
     const ok = done && qq.picked === qq.answer;
     const t = qq.ref && termById(qq.ref);
@@ -391,40 +425,54 @@
         <p class="qq-verdict">${ok ? '正解です。' : `惜しい。正解は「${esc(qq.choices[qq.answer])}」です。`}</p>
         <p class="qq-exp">${esc(qq.exp)}</p>
         <div class="term-acts"><button class="btn" data-act="qq-next">もう1問</button>
-          <a class="btn-line" href="${xUrl(quizPost(qq))}" target="_blank" rel="noopener" data-act="x-quiz">この問題をXで出題</a>
+          ${d === 'pm' ? '' : `<a class="btn-line" href="${xUrl(quizPost(qq))}" target="_blank" rel="noopener" data-act="x-quiz">この問題をXで出題</a>`}
           ${t ? `<button class="btn-line" data-act="show-term" data-id="${esc(t.id)}">「${esc(t.t)}」の解説を見る</button>` : ''}</div>
       </div>` : ''}
     </div>`;
   }
-  function refreshQQ() { document.querySelectorAll('.qq-slot').forEach(el => { el.innerHTML = qqHtml(); }); }
+  function refreshQQ() { document.querySelectorAll('.qq-slot').forEach(el => { el.innerHTML = qqHtml(el.dataset.d || 'shindan'); }); }
 
-  // ── 読みもの（designing・M-HAND Study・iDID インタビュー） ──
-  // designing の RSS と iDID の WordPress API は、ブラウザから直接読める（CORS許可あり）。
-  // note はブラウザから直接読めないため、無料の中継（allorigins）を通す。止まっていたら data.js の一覧を使う。
-  // 要約は編集部の概要文と、本文から関心キーワードを含む文を抜き出したもの。AIは使わない。
+  // ── 読みもの（Qiita のPMBOK記事・PM実践記事・Backlog ブログ・iDID インタビュー） ──
+  // どれもブラウザから直接読める（CORS許可あり）。中継サービスは使わない。
+  // 要約は記事の冒頭と、本文から関心キーワードを含む文を抜き出したもの。AIは使わない。
   const FEED_TTL = 12 * 3600 * 1000;
-  const DEFAULT_INTERESTS = ['クリエイティブディレクション', 'ディレクター', 'ブランディング', '経営', '組織', '事業', '中小企業', '地域', 'キャリア', 'チーム', 'マネジメント', '音楽', 'AI', '言葉'];
+  const DEFAULT_INTERESTS = ['PMBOK', 'パフォーマンス領域', 'テーラリング', 'ガバナンス', 'プロジェクトマネジメント', 'PM', '要件定義', '見積もり', 'リスク', '品質', '進行管理', 'ディレクション', '合意', 'チーム', 'マネジメント', '生成AI', 'RAG', 'AI駆動', 'DX', '組織', 'クライアント', '言葉'];
   // 読む前の問い：読み物ごとに「何を持ち帰るか」を決めてから開く。日替わりで1つ出す
+  const QIITA_QUERY = 'stocks:>5 tag:プロジェクトマネジメント OR stocks:>5 tag:PM OR stocks:>5 tag:要件定義 OR stocks:>5 tag:ディレクション';
+  const QIITA_PMBOK = 'tag:PMBOK OR PMBOK stocks:>3';
+  const mdText = md => String(md || '').replace(/```[\s\S]*?```/g, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^#+\s*/gm, '').replace(/[*_`>|]/g, '').replace(/\n\s*\n+/g, '\n').trim();
+  // Qiita の検索API（CORS許可あり。認証なしで1時間60回まで。12時間に1回しか読まないので足りる）
+  async function qiitaLoad(query) {
+    const res = await fetch(`https://qiita.com/api/v2/items?per_page=30&query=${encodeURIComponent(query)}`, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(String(res.status));
+    return (await res.json()).map(p => {
+      const text = mdText(p.body).slice(0, 8000);
+      return { id: p.url, link: p.url, title: p.title, date: Date.parse(p.created_at) || 0, desc: text.slice(0, 110) + (text.length > 110 ? '…' : ''), text, likes: p.likes_count || 0 };
+    });
+  }
   const SOURCES = {
-    designing: {
-      name: 'designing', sub: '今日の1本', key: 'tsumiage.feed', link: /^https:\/\/designing\.jp\//,
-      about: 'designing（デザインビジネスマガジン）',
-      lens: ['この会社・人は、何を捨てて何に集中したか', '自分の顧客（中小企業の経営者）に話すなら、どの1文を使うか', '診断士の用語で言い換えると、どの考え方に当たるか'],
-      async load() {
-        const xml = await getXml('https://designing.jp/feed.xml');
-        return rssItems(xml, it => ({ desc: plainText(it('description')), text: plainText(it('content:encoded')).slice(0, 8000) }));
-      },
+    pmbok: {
+      name: 'Qiita：PMBOK', sub: 'PMBOKを学ぶ記事', key: 'tsumiage.feed.qiita-pmbok', link: /^https:\/\/qiita\.com\//,
+      about: 'Qiita（エンジニアの技術記事サイト）のPMBOKに関する記事',
+      lens: ['この記事の話は、PMBOK第8版のどの原則・パフォーマンス領域に当たるか', '自分の過去の案件で、同じ場面はどこだったか。そのとき何が足りなかったか', '入社後の最初の案件で、この考え方をどう使うか'],
+      load: () => qiitaLoad(QIITA_PMBOK),
     },
-    mhand: {
-      name: 'M-HAND Study', sub: '制作会社の組織と仕組み', key: 'tsumiage.feed.mhand-study', link: /^https:\/\/note\.com\/mhand_note\/n\//,
-      about: 'エムハンド（Web制作会社）の note マガジン「M-HAND Study」（制度・評価・業務フローなど組織の仕組みのシリーズ）',
-      lens: ['この仕組みは、誰のどんな困りごとを解くためにつくられたか', '仕事が1人に偏ったとき、この組織では誰がどう調整しそうか', '自分が入るとしたら、この仕組みのどこで力を出せるか'],
+    qiita: {
+      name: 'Qiita：PM実践', sub: '現役PMの実践記事', key: 'tsumiage.feed.qiita-pm', link: /^https:\/\/qiita\.com\//,
+      about: 'Qiita（エンジニアの技術記事サイト）のプロジェクトマネジメント・要件定義の記事',
+      lens: ['この人は、どの判断で迷い、何を基準に決めたか', '大企業の案件で同じことが起きたら、自分は最初に誰と何を合意するか', 'Web制作の経験に置き換えると、どの場面の話か'],
+      load: () => qiitaLoad(QIITA_QUERY),
+    },
+    backlog: {
+      name: 'Backlog ブログ', sub: 'プロジェクト管理とチーム', key: 'tsumiage.feed.backlog', link: /^https:\/\/backlog\.com\/ja\/blog\//,
+      about: 'Backlog ブログ（プロジェクト管理ツールを作るヌーラボのブログ）',
+      lens: ['この仕組みは、誰のどんな困りごとを解くためのものか', '仕事が1人に偏ったとき、この方法ならどう防げるか', '自分のチームに取り入れるなら、どこからか'],
       async load() {
-        const rss = 'https://note.com/mhand_note/m/m4b67599d18bc/rss';
-        let items = [];
-        try { items = rssItems(await getXml(`https://api.allorigins.win/raw?url=${encodeURIComponent(rss)}`), () => ({})); } catch (e) { /* 中継が止まっていても一覧は出す */ }
-        const seen = new Set(items.map(i => i.link));
-        return [...items, ...MHAND_SNAPSHOT.filter(s => !seen.has(s.link)).map(s => ({ id: s.link, ...s }))];
+        const xml = await getXml('https://backlog.com/ja/blog/feed/');
+        // 概要の末尾につく「続きを読む» The post … appeared first on …」を取り除く
+        const clean = t => t.replace(/\s*(続きを読む»?|続きを読む\s*»)?\s*The post[\s\S]*appeared first on[\s\S]*$/, '').trim();
+        return rssItems(xml, it => ({ desc: clean(plainText(it('description'))), text: plainText(it('content:encoded')).slice(0, 8000) }));
       },
     },
     idid: {
@@ -482,7 +530,7 @@
   const fetchFeed = (force = false) => SRC_IDS.forEach(s => fetchSource(s, force));
 
   // 記事と用語を結びつけるとき、日常語に近い別名は使わない
-  const COMMON_WORDS = new Set(['プロダクト', 'プライス', 'プレイス', 'プロモーション', '4C', '資産', '負債', '純資産', '整理', '整頓', '清掃', '清潔', 'しつけ', '自己実現', 'リピート', '導入期', '成長期', '成熟期', '衰退期', '共通目的', 'コミュニケーション', '人工物', '移行', '解凍', 'シナジー', '顧客', '競合', '自社', '差別化戦略', '回収期間', '割引率', '現在価値', '発注費', '保管費', '在庫管理']);
+  const COMMON_WORDS = new Set(['コスト', 'ドメイン', 'インプット', 'アウトプット', 'リーダーシップ', 'クラウド', 'ログイン', 'データベース', '要件', '定例', 'エージェント', 'プロダクト', 'プライス', 'プレイス', 'プロモーション', '4C', '資産', '負債', '純資産', '整理', '整頓', '清掃', '清潔', 'しつけ', '自己実現', 'リピート', '導入期', '成長期', '成熟期', '衰退期', '共通目的', 'コミュニケーション', '人工物', '移行', '解凍', 'シナジー', '顧客', '競合', '自社', '差別化戦略', '回収期間', '割引率', '現在価値', '発注費', '保管費', '在庫管理']);
   const interests = () => (S.interests && S.interests.length ? S.interests : DEFAULT_INTERESTS);
   function scoreItem(it) {
     let sc = 0;
@@ -492,8 +540,9 @@
       if (inTitle || inDesc || n) { hits.push(k); sc += (inTitle ? 3 : 0) + (inDesc ? 2 : 0) + n; }
     }
     const body = `${it.title}\n${it.text}`;
-    const terms = GLOSSARY.filter(t => [t.t, ...(t.y || [])].some(k => k.length >= 3 && !COMMON_WORDS.has(k) && body.includes(k))).slice(0, 3);
+    const terms = PM_GLOSSARY.concat(GLOSSARY).filter(t => [t.t, ...(t.y || [])].some(k => k.length >= 3 && !COMMON_WORDS.has(k) && body.includes(k))).slice(0, 3);
     sc += terms.length * 1.5;
+    if (it.likes) sc += Math.min(4, Math.log10(it.likes + 1) * 2); // たくさん読まれている記事を少しだけ優先
     sc += Math.max(0, 4 - (Date.now() - it.date) / 864e5 / 14); // 新しい記事を少しだけ優先
     return { sc, hits, terms };
   }
@@ -510,16 +559,16 @@
   const lensOf = s => pickDaily(SOURCES[s].lens, `lens-${s}`);
   const articlePrompt = it => {
     const src = SOURCES[it.src];
-    return `${src.about}の記事「${it.title}」について教えてください。\nURL：${it.link}\n\n${it.desc ? `概要：${it.desc}\n\n` : ''}${it.text ? `本文の冒頭：\n${it.text.slice(0, 900)}\n\n` : '本文はURLから読んでください。\n\n'}読む前に立てた問い：${lensOf(it.src)}\n\n次の4つを、平易な日本語でお願いします。\n1. 3行の要約\n2. 上の問いへの、記事から読み取れる答え\n3. 転職活動中のWebディレクター（中小企業診断士を勉強中）が、仕事に活かせる示唆を3つ\n4. 理解を確かめる問いを2つ（答えは書かずに。私が答えたら採点してください）`;
+    return `${src.about}の記事「${it.title}」について教えてください。\nURL：${it.link}\n\n${it.desc ? `概要：${it.desc}\n\n` : ''}${it.text ? `本文の冒頭：\n${it.text.slice(0, 900)}\n\n` : '本文はURLから読んでください。\n\n'}読む前に立てた問い：${lensOf(it.src)}\n\n次の4つを、平易な日本語でお願いします。\n1. 3行の要約\n2. 上の問いへの、記事から読み取れる答え\n3. これから大企業のシステム・生成AI案件のプロジェクトマネージャーになるWebディレクター（中小企業診断士も勉強中）が、仕事に活かせる示唆を3つ\n4. 理解を確かめる問いを2つ（答えは書かずに。私が答えたら採点してください）`;
   };
   // その日に読んだ記事（積み上げの記録）をまとめて、共通点を考える
   const readToday = () => S.wins.filter(w => w.date === ymd() && w.key && w.key.startsWith('read:'));
-  const linkPrompt = list => `今日、次の${list.length}本を読みました。\n\n${list.map((w, i) => `${i + 1}. ${w.text}`).join('\n')}\n\n次の3つを、平易な日本語でお願いします。\n1. ${list.length}本に共通する考え方を1つ\n2. 食い違っている点があれば1つ\n3. 明日の仕事（または面接）で試せる行動を1つ。いつ・どこで・何をするかまで`;
+  const linkPrompt = list => `今日、次の${list.length}本を読みました。\n\n${list.map((w, i) => `${i + 1}. ${w.text}`).join('\n')}\n\n次の3つを、平易な日本語でお願いします。\n1. ${list.length}本に共通する考え方を1つ\n2. 食い違っている点があれば1つ\n3. 明日の仕事や学習で試せる行動を1つ。いつ・どこで・何をするかまで`;
   function articleCard(it, { compact = false } = {}) {
     const d = new Date(it.date);
     const reason = [
       it.hits.length ? `「${it.hits.slice(0, 3).join('」「')}」に関係` : '',
-      it.terms.length ? `診断士の「${it.terms.map(t => t.t).join('」「')}」とつながる` : '',
+      it.terms.length ? `用語「${it.terms.map(t => t.t).join('」「')}」とつながる` : '',
     ].filter(Boolean).join('。');
     const lines = compact ? [] : keyLines(it, it.hits);
     return `<article class="article">
@@ -540,7 +589,7 @@
         ${compact ? '' : `<button class="btn-icon" data-act="art-skip" data-id="${esc(it.id)}">今回は見送る</button>`}
       </div></article>`;
   }
-  function feedSlotHtml(mode, s = 'designing') {
+  function feedSlotHtml(mode, s = 'pmbok') {
     const feed = feeds[s], name = SOURCES[s].name;
     if (!feed) {
       return feedState[s] === 'error'
@@ -551,7 +600,7 @@
     if (!recs.length) return `<p class="empty">${esc(name)} の記事はすべて読みました。新しい記事が出たら、ここに表示します。</p>`;
     if (mode === 'today') return articleCard(recs[0], { compact: true });
     const at = new Date(feed.at);
-    return `${recs.slice(0, 5).map(it => articleCard(it)).join('')}
+    return `${recs.slice(0, 3).map(it => articleCard(it)).join('')}
       <p class="meta feed-foot">${feedState[s] === 'error' ? '最新の記事を読み込めなかったため、前回の内容を表示しています。' : ''}
         記事一覧の更新：${at.getMonth() + 1}月${at.getDate()}日 ${pad(at.getHours())}:${pad(at.getMinutes())}
         <button class="btn-quiet" data-act="feed-retry">いま更新する</button></p>`;
@@ -595,6 +644,9 @@
     bulb: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+    moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+    clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
   };
   const icon = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
   // title・tag は呼び出し側でエスケープ済みの文字列を渡す
@@ -650,9 +702,9 @@
   function taskForm(cat) {
     return `<details class="add"><summary>${icon('plus')}次の1歩を決める</summary>
       <form class="form" data-form="task">
-        <label>何を<input name="what" required placeholder="例：面接で話す案件を1本決めて、判断と結果を書き出す"></label>
+        <label>何を<input name="what" required placeholder="例：WBSの考え方を読んで、過去の案件を1つ分解してみる"></label>
         <label>いつ・どこで<input name="when" placeholder="例：夜9時、リビングの机で"></label>
-        <label>5分版（しんどい日はこれだけ）<input name="mini" placeholder="例：案件名だけ決める"></label>
+        <label>5分版（しんどい日はこれだけ）<input name="mini" placeholder="例：用語を1つだけ読む"></label>
         <label>分類<select name="cat">${catOptions(cat)}</select></label>
         <div><button class="btn">決める</button></div>
       </form></details>`;
@@ -682,7 +734,7 @@
     const acts = `<div class="term-acts">
         <button class="btn" data-act="rev-ok" data-id="${esc(t.id)}"${quizMode ? ' data-quiz' : ''}>わかった</button>
         <button class="btn-line" data-act="rev-ng" data-id="${esc(t.id)}"${quizMode ? ' data-quiz' : ''}>あやしい</button>
-        <a class="link" href="${claudeUrl(termPrompt(t.t))}" target="_blank" rel="noopener">Claudeにもっと聞く</a>
+        <a class="link" href="${claudeUrl(termPrompt(t.t, domOf(t)))}" target="_blank" rel="noopener">Claudeにもっと聞く</a>
         <a class="link" href="${xUrl(termPost(t))}" target="_blank" rel="noopener" data-act="x-term" data-id="${esc(t.id)}">Xにポスト</a>
         ${t.mine ? `<button class="btn-icon" data-act="term-del" data-id="${esc(t.id)}">この用語を消す</button>` : ''}
       </div>`;
@@ -692,9 +744,80 @@
       ${t.one ? `<p class="term-one">${esc(t.one)}</p>` : ''}
       <details class="term-more"${open ? ' open' : ''}><summary>解説を読む</summary>
         <p>${escBr(t.body)}</p>
-        ${t.tip ? `<h4>試験のツボ</h4><p>${esc(t.tip)}</p>` : ''}
-        ${t.work ? `<h4>仕事でいうと</h4><p>${esc(t.work)}</p>` : ''}
+        ${t.tip ? `<h4>${isPm(t) ? '現場のツボ' : '試験のツボ'}</h4><p>${esc(t.tip)}</p>` : ''}
+        ${t.work ? `<h4>${isPm(t) ? 'Web制作の経験でいうと' : '仕事でいうと'}</h4><p>${esc(t.work)}</p>` : ''}
       </details>${acts}</article>`;
+  }
+
+  // ── 学習時間 ──
+  // 主役（PM）の記録のうち、分数つきのものを学習時間として合計する
+  const learnFrom = () => (S.learn && S.learn.from) || '';
+  const learnGoal = () => Math.max(1, Number(S.learn && S.learn.goal) || 35);
+  const learnMin = (from = learnFrom()) => S.wins.filter(w => w.cat === MAIN && w.min && (!from || w.date >= from)).reduce((a, w) => a + w.min, 0);
+  const hm = m => (m >= 60 ? `${Math.floor(m / 60)}時間${m % 60 ? `${m % 60}分` : ''}` : `${m}分`);
+  function learnHtml() {
+    const m = learnMin(), goal = learnGoal() * 60, wk = learnMin(weekStart());
+    const pct = Math.min(100, Math.round(m / goal * 100));
+    return `<div class="goal" data-cat="${MAIN}">
+      <div class="goal-line"><span class="goal-name">学習時間</span>
+        <span class="goal-num${m >= goal ? ' is-done' : ''}"><b>${hm(m)}</b> / ${learnGoal()}時間　今週 ${hm(wk)}</span></div>
+      <div class="meter" aria-hidden="true"><i style="width:${pct}%"></i></div>
+      <details class="add"><summary>${icon('clock')}学んだ時間を記録する</summary>
+        <form class="form form-row learn-row" data-form="learn">
+          <input name="what" required placeholder="例：RAGの仕組みを読んだ" aria-label="学んだこと">
+          <input name="min" type="number" inputmode="numeric" min="5" step="5" value="30" aria-label="分" required>
+          <button class="btn">記録</button>
+        </form></details>
+    </div>`;
+  }
+
+  // ── こころ ──
+  const todayJournal = () => (S.journal || []).find(j => j.date === ymd());
+  const moodOf = k => (S.mood || {})[k] || {};
+  function moodPicker() {
+    const m = moodOf(ymd()).m || 0;
+    return `<div class="mood-row" role="group" aria-label="今日の気分">${[1, 2, 3, 4, 5].map(v =>
+      `<button class="mood${m === v ? ' is-on' : ''}" data-act="mood" data-v="${v}" aria-pressed="${m === v}"><b>${v}</b><span>${MOODS[v]}</span></button>`).join('')}</div>`;
+  }
+  function moodChart(days = 14) {
+    const keys = Array.from({ length: days }, (_, i) => addDays(ymd(), i - days + 1));
+    return `<div class="mood-chart" role="img" aria-label="直近${days}日の気分と睡眠">
+      ${keys.map((k, i) => { const r = moodOf(k), last = i === keys.length - 1;
+        return `<div class="mc-col"><div class="mc-bar m${r.m || 0}" style="height:${r.m ? r.m * 20 : 6}%"></div>
+          <p class="mc-sleep">${r.s ? r.s : '·'}</p><p class="mc-day">${last ? '今日' : parseYmd(k).getDate()}</p></div>`; }).join('')}
+    </div><p class="meta">棒が気分（1〜5）、下の数字が睡眠時間です。</p>`;
+  }
+  // 低い気分や短い睡眠が続いたら、ひとりで抱えないよう声をかける（診断ではない）
+  function careNote() {
+    const keys = Array.from({ length: 14 }, (_, i) => addDays(ymd(), -i));
+    const rs = keys.map(moodOf);
+    const low = rs.filter(r => r.m && r.m <= 2).length;
+    const sl = rs.filter(r => r.s).map(r => r.s);
+    const notes = [];
+    if (low >= 10) notes.push('この2週間、つらい日が多く続いています。ひとりで抱えずに、家族や信頼できる人に話してみてください。眠れない・気分の落ち込みが続くときは、早めに医療機関や相談窓口に相談してください。');
+    if (sl.length >= 7 && sl.reduce((a, b) => a + b, 0) / sl.length < 5.5) notes.push('睡眠が短い日が続いています。学習より睡眠を先に確保して大丈夫です。');
+    return notes.map(n => `<p class="alert care">${esc(n)}</p>`).join('');
+  }
+  function journalForm() {
+    const j = todayJournal() || {};
+    return `<form class="form" data-form="journal">
+      <label>今日できたこと（小さくてよい）<input name="did" value="${esc(j.did || '')}" placeholder="例：引き継ぎ資料を1ページ書いた"></label>
+      <label>今日よかったこと<input name="good" value="${esc(j.good || '')}" placeholder="例：夕飯がおいしかった"></label>
+      <label>明日の最初の1歩<input name="next" value="${esc(j.next || '')}" placeholder="例：朝、用語を1つ読む"></label>
+      <div><button class="btn">${j.id ? '書き直す' : '3行を残す'}</button></div>
+    </form>`;
+  }
+  function worryItem(w) {
+    return `<li class="worry">
+      <p class="worry-text">${esc(w.text)}</p>
+      <div class="worry-acts">
+        <details class="add"><summary>自分でできることがある</summary>
+          <form class="form form-inline" data-form="worry-can" data-id="${w.id}">
+            <input name="action" required placeholder="小さな1歩を1つ" aria-label="自分でできること"><button class="btn">1歩にする</button>
+          </form></details>
+        <button class="btn-line" data-act="worry-let" data-id="${w.id}">手放す</button>
+        <button class="btn-icon" data-act="worry-del" data-id="${w.id}" aria-label="「${esc(w.text)}」を消す">×</button>
+      </div></li>`;
   }
 
   // ── 画面：きょう ──
@@ -702,10 +825,12 @@
     const total = S.wins.length;
     const week = winsSince(weekStart());
     const { lines, fact } = encourage();
-    const jobTasks = S.tasks.filter(t => !t.done && t.cat === 'job');
-    const subTasks = S.tasks.filter(t => !t.done && t.cat !== 'job');
+    const jobTasks = S.tasks.filter(t => !t.done && t.cat === MAIN);
+    const subTasks = S.tasks.filter(t => !t.done && t.cat !== MAIN);
     const studied = S.studyDays[ymd()] || 0;
     const word = pickDaily(allTerms().filter(t => t.one), 'word');
+    const pmWord = pickDaily(allTerms('pm').filter(t => t.one), 'pmword');
+    const tj = todayJournal();
     const wk = c => week.filter(w => (Array.isArray(c) ? c.includes(w.cat) : w.cat === c)).length;
     const last7 = Array.from({ length: 7 }, (_, i) => countOn(addDays(ymd(), -i))).reduce((a, b) => a + b, 0);
     return `
@@ -738,9 +863,14 @@
               ${deco('This Week', '週')}
               <div class="stat-top"><span class="badge">${icon('chart')}</span><b class="stat-num">${week.length}</b></div>
               <p class="stat-label">今週</p>
-              <dl class="stat-list"><dt>転職</dt><dd>${wk('job')}</dd><dt>発信</dt><dd>${wk(['note', 'music'])}</dd><dt>診断士</dt><dd>${wk('study')}</dd></dl>
+              <dl class="stat-list"><dt>PM</dt><dd>${wk(MAIN)}</dd><dt>発信</dt><dd>${wk(['note', 'music'])}</dd><dt>診断士</dt><dd>${wk('study')}</dd></dl>
             </section>
           </div>
+          <section class="card" data-tone="mint">
+            ${deco('Heart', '心')}${cardHead('heart', 'こころ', '気分を1つ選ぶ。寝る前に3行')}
+            ${moodPicker()}
+            <p class="meta kokoro-foot">${tj ? '今日の3行は書きました。' : '今日の3行はまだです。'}<a class="link" href="#/kokoro">${tj ? '3行を見る' : '3行を書く'}・不安メモへ</a></p>
+          </section>
           <section class="card" data-tone="pink">
             ${deco('Seven Days', '跡')}${cardHead('chart', 'この7日間', `${last7}件の記録。小さな1件も、ちゃんと数えています。`)}
             ${barsHtml(7)}
@@ -748,11 +878,16 @@
         </div>
         <div class="col">
           <section class="card" data-tone="coral">
-            ${deco('Main Role', '轉')}${cardHead('target', esc(S.mainLabel), '主役')}
-            ${whyHtml('job')}
+            ${deco('Main Role', '進')}${cardHead('target', esc(catLabel(MAIN)), '主役')}
+            ${whyHtml(MAIN)}
+            ${learnHtml()}
+            ${pmWord ? `<div class="wod">
+              <div class="wod-text"><p class="term-subj">今日のPMの1語</p>
+                <p class="wod-name">${esc(pmWord.t)}</p><p class="wod-one">${esc(pmWord.one)}</p></div>
+              <div class="wod-acts"><button class="btn-line" data-act="show-term" data-id="${esc(pmWord.id)}">解説</button></div></div>` : ''}
             ${jobTasks.length ? `<ul class="tasks">${jobTasks.map(taskItem).join('')}</ul>`
               : '<p class="empty">次の1歩がまだありません。「いつ・どこで・何を」まで決めておくと、動き出しやすくなります。</p>'}
-            ${taskForm('job')}
+            ${taskForm(MAIN)}
           </section>
           <section class="card" data-tone="lavender">
             ${deco('Side Role', '發')}${cardHead('pen', '発信', '脇役')}
@@ -769,7 +904,7 @@
                 <a class="btn" href="${xUrl(termPost(word))}" target="_blank" rel="noopener" data-act="x-term" data-id="${esc(word.id)}">Xにポスト</a>
                 <button class="btn-line" data-act="show-term" data-id="${esc(word.id)}">解説</button>
               </div></div>` : ''}
-            <div class="qq-slot">${qqHtml()}</div>
+            <div class="qq-slot" data-d="shindan">${qqHtml()}</div>
             <p class="meta qq-foot">${studied ? `今日は${studied}回ふりかえりました。` : ''}<a class="link" href="#/study">用語さがしと計算ふりかえりへ</a></p>
           </section>
           <section class="card" data-tone="sand">
@@ -823,26 +958,27 @@
           </section>
         </div>
         <div class="col">
-          <section class="card" data-tone="sand">${deco('Reading List', '讀')}${cardHead('news', 'designing のおすすめ', '関心のあるキーワードと、診断士の用語に近い記事から順に並べています')}
-            <div class="feed-slot" data-mode="list">${feedSlotHtml('list')}</div>
-          </section>
+          ${SRC_IDS.map(s => `<section class="card" data-tone="sand">${deco('Reading List', '讀')}${cardHead('news', `${esc(SOURCES[s].name)} のおすすめ`, `${esc(SOURCES[s].sub)}。関心のあるキーワードと、PM・診断士の用語に近い記事から順に並べています`)}
+            <div class="feed-slot" data-mode="list" data-src="${s}">${feedSlotHtml('list', s)}</div>
+          </section>`).join('')}
         </div>
       </div>`;
   }
 
   // ── 画面：診断士 ──
-  function resultsHtml(q) {
+  function resultsHtml(q, d = 'shindan') {
     if (!q.trim()) return '';
-    const r = search(q);
-    const ask = `<a class="btn" href="${claudeUrl(termPrompt(q.trim()))}" target="_blank" rel="noopener">Claudeに解説してもらう</a>`;
+    const r = search(q, d);
+    const subjects = d === 'pm' ? PM_SUBJECTS : SUBJECTS;
+    const ask = `<a class="btn" href="${claudeUrl(termPrompt(q.trim(), d))}" target="_blank" rel="noopener">Claudeに解説してもらう</a>`;
     if (!r.length) {
       return `<div class="notfound">
         <p>「${esc(q)}」はまだ辞書にありません。Claudeに聞いて、よければ自分の辞書に登録しておきましょう。</p>
         <div class="row">${ask}</div>
         <details class="add"><summary>${icon('plus')}自分の辞書に登録する</summary>
-          <form class="form" data-form="myterm">
+          <form class="form" data-form="myterm" data-d="${d}">
             <label>用語<input name="t" required value="${esc(q.trim())}"></label>
-            <label>科目<select name="s">${SUBJECTS.map(s => `<option>${s}</option>`).join('')}</select></label>
+            <label>${d === 'pm' ? '分野' : '科目'}<select name="s">${subjects.map(s => `<option>${s}</option>`).join('')}</select></label>
             <label>一言でいうと<input name="one" placeholder="例：〇〇とは、〜のこと"></label>
             <label>解説（Claudeの回答を貼り付けても構いません）<textarea name="body" required></textarea></label>
             <div><button class="btn">登録する</button></div>
@@ -852,14 +988,14 @@
     return `${termCard(top, { open: true })}
       ${rest.length ? `<div class="others">ほかの候補<div class="row">${rest.slice(0, 6).map(t =>
         `<button class="chip" data-act="show-term" data-id="${esc(t.id)}">${esc(t.t)}</button>`).join('')}</div></div>` : ''}
-      <p class="others">探している言葉と違うときは <a class="link" href="${claudeUrl(termPrompt(q.trim()))}" target="_blank" rel="noopener">Claudeに「${esc(q.trim())}」を聞く</a></p>`;
+      <p class="others">探している言葉と違うときは <a class="link" href="${claudeUrl(termPrompt(q.trim(), d))}" target="_blank" rel="noopener">Claudeに「${esc(q.trim())}」を聞く</a></p>`;
   }
 
-  function quizHtml() {
-    if (!quiz) return '<button class="btn" data-act="quiz-start">10語ふりかえる</button>';
+  function quizHtml(d = 'shindan') {
+    if (!quiz || quiz.d !== d) return `<button class="btn" data-act="quiz-start" data-d="${d}">10語ふりかえる</button>`;
     if (quiz.i >= quiz.q.length) {
       return `<div class="quiz-card"><p>${quiz.q.length}語ふりかえりました。忘れかけた語から先に出るので、明日も同じボタンを押すだけで大丈夫です。</p>
-        <div class="term-acts"><button class="btn" data-act="quiz-start">もう10語</button><button class="btn-line" data-act="quiz-end">終える</button></div></div>`;
+        <div class="term-acts"><button class="btn" data-act="quiz-start" data-d="${d}">もう10語</button><button class="btn-line" data-act="quiz-end">終える</button></div></div>`;
     }
     const t = termById(quiz.q[quiz.i]);
     const pos = `<p class="quiz-pos">${quiz.i + 1} / ${quiz.q.length}</p>`;
@@ -892,36 +1028,106 @@
         ${f.tip ? `<p class="f-tip">${esc(f.tip)}</p>` : ''}</div></details>`;
   }
 
-  function viewStudy() {
-    const terms = allTerms();
+  function studyView(d = 'shindan') {
+    const pm = d === 'pm';
+    const terms = allTerms(d);
     const seen = terms.filter(t => S.study[t.id]).length;
-    const bySubj = SUBJECTS.map(s => [s, terms.filter(t => t.s === s)]).filter(([, ts]) => ts.length);
+    const days = pm ? (S.pmDays || {}) : S.studyDays;
+    const bySubj = (pm ? PM_SUBJECTS : SUBJECTS).map(s => [s, terms.filter(t => t.s === s)]).filter(([, ts]) => ts.length);
     return `
-      ${pageHead('診断士', '本で読んだ言葉を入れると、解説が出ます。1日1語でも積み上がります。', 'Study Room', '學')}
-      <form class="search" data-form="search" role="search">
+      ${pm ? pageHead('PM学習', 'PMBOK（第8版）を軸に、プロジェクトマネジメント・生成AIの導入・システムとクラウドの言葉を学びます。入社までに、エンジニアやお客様と同じ言葉で話せるようにします。', 'PM Room', '進')
+        : pageHead('診断士', '本で読んだ言葉を入れると、解説が出ます。1日1語でも積み上がります。', 'Study Room', '學')}
+      <form class="search" data-form="search" data-d="${d}" role="search">
         <span class="search-icon">${icon('search')}</span>
-        <input id="q" type="search" name="q" value="${esc(searchQ)}" placeholder="例：コア・コンピタンス、損益分岐点" aria-label="調べる言葉" autocomplete="off">
+        <input id="q" type="search" name="q" data-d="${d}" value="${esc(searchQ[d])}" placeholder="${pm ? '例：PMBOK、テーラリング、WBS、RAG' : '例：コア・コンピタンス、損益分岐点'}" aria-label="調べる言葉" autocomplete="off">
         <button class="btn">調べる</button>
       </form>
-      <div id="results" class="card">${resultsHtml(searchQ)}</div>
+      <div id="results" class="card">${resultsHtml(searchQ[d], d)}</div>
       <div class="grid-2">
         <div class="col">
-          <section class="card" data-tone="yellow">${deco('Quick Quiz', '問')}${cardHead('quiz', 'ちょっと1問', '用語当て・○×・暗算。間違えた問題は明日もう一度')}
-            <div class="qq-slot">${qqHtml()}</div>
+          ${pm ? pmbokMapHtml() : ''}
+          ${pm ? `<section class="card" data-tone="coral">${deco('Study Time', '時')}${cardHead('clock', '入社までの学習', '学んだ時間を記録すると、ここと「きょう」に積み上がります')}${learnHtml()}</section>` : ''}
+          <section class="card" data-tone="yellow">${deco('Quick Quiz', '問')}${cardHead('quiz', 'ちょっと1問', pm ? '用語当て。間違えた用語は明日もう一度' : '用語当て・○×・暗算。間違えた問題は明日もう一度')}
+            <div class="qq-slot" data-d="${d}">${qqHtml(d)}</div>
           </section>
-          <section class="card" data-tone="mint">${deco('Review', '復')}${cardHead('book', '用語ふりかえり', `ふりかえった語 ${seen} / ${terms.length}　今日 ${S.studyDays[ymd()] || 0}回　復習待ち ${dueTerms().length}語`)}
+          <section class="card" data-tone="mint">${deco('Review', '復')}${cardHead('book', '用語ふりかえり', `ふりかえった語 ${seen} / ${terms.length}　今日 ${days[ymd()] || 0}回　復習待ち ${dueTerms(d).length}語`)}
             <div class="meter" aria-hidden="true"><i style="width:${Math.round(seen / terms.length * 100)}%"></i></div>
-            <div id="quiz">${quizHtml()}</div>
+            <div id="quiz">${quizHtml(d)}</div>
           </section>
-          <section class="card glossary-list" data-tone="lavender">${deco('Glossary', '詞')}${cardHead('list', '用語一覧')}
-            ${bySubj.map(([s, ts]) => `<details><summary>${esc(s)}（${ts.length}）</summary><div class="row">
-              ${ts.map(t => `<button class="chip${S.study[t.id] ? ' is-seen' : ''}" data-act="show-term" data-id="${esc(t.id)}">${esc(t.t)}</button>`).join('')}
-            </div></details>`).join('')}
+          ${pm ? '' : glossaryCard(bySubj)}
+        </div>
+        <div class="col">
+          ${pm ? glossaryCard(bySubj, true) : `<section class="card" data-tone="peach">${deco('Numbers', '算')}${cardHead('calc', '計算ふりかえり', '数字を変えると、その場で答えが変わります。本の例題の答え合わせにも')}
+            ${FORMULAS.map(formulaHtml).join('')}
+          </section>`}
+        </div>
+      </div>`;
+  }
+  // PMBOK第8版の全体像。チップを押すと、その考え方に近い用語の解説を開く
+  const PMBOK_MAP = [
+    ['6つの原則', [['全体を見る', 'pmbok-holistic'], ['価値に焦点', 'pmbok-value'], ['品質を組み込む', 'pmbok-quality'], ['責任あるリーダー', 'pmbok-leader'], ['持続可能性', 'pmbok-sustain'], ['力を発揮できる文化', 'pmbok-culture']]],
+    ['7つのパフォーマンス領域', [['ガバナンス', 'pmbok-governance'], ['スコープ', 'pm-scope'], ['スケジュール', 'pm-cp'], ['ファイナンス', 'pmbok-finance'], ['ステークホルダー', 'pm-stake'], ['資源', 'pm-raci'], ['リスク', 'pm-risk']]],
+    ['5つのフォーカスエリア', [['立ち上げ', 'pmbok-charter'], ['計画', 'pm-wbs'], ['実行', 'pm-meeting'], ['監視とコントロール', 'pmbok-evm'], ['終結', 'pm-cutover']]],
+  ];
+  const pmbokMapHtml = () => `<section class="card" data-tone="sky">${deco('PMBOK Map', '地')}${cardHead('flag', 'PMBOK第8版の地図', '2025年11月発行。6つの原則・7つのパフォーマンス領域・5つのフォーカスエリア・約40のプロセス')}
+      ${PMBOK_MAP.map(([h, items]) => `<p class="map-head">${esc(h)}</p><div class="row">${items.map(([label, id]) =>
+        `<button class="chip${S.study[id] ? ' is-seen' : ''}" data-act="show-term" data-id="${id}">${esc(label)}</button>`).join('')}</div>`).join('')}
+      <p class="meta map-foot"><button class="btn-quiet" data-act="show-term" data-id="pmbok-guide">PMBOKガイドとは（版ごとの違い）</button></p>
+    </section>`;
+  const glossaryCard = (bySubj, open = false) => `<section class="card glossary-list" data-tone="lavender">${deco('Glossary', '詞')}${cardHead('list', '用語一覧')}
+      ${bySubj.map(([s, ts]) => `<details${open ? ' open' : ''}><summary>${esc(s)}（${ts.length}）</summary><div class="row">
+        ${ts.map(t => `<button class="chip${S.study[t.id] ? ' is-seen' : ''}" data-act="show-term" data-id="${esc(t.id)}">${esc(t.t)}</button>`).join('')}
+      </div></details>`).join('')}
+    </section>`;
+
+  // ── 画面：こころ ──
+  function viewKokoro() {
+    const ws = S.worries || [];
+    const open = ws.filter(w => !w.kind).slice().reverse();
+    const sorted = ws.filter(w => w.kind && w.date >= addDays(ymd(), -13)).slice().reverse();
+    const recent = (S.journal || []).filter(j => j.date !== ymd()).slice().sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 7);
+    const sl = moodOf(ymd()).s;
+    return `
+      ${pageHead('こころ', '不安は消そうとしなくて大丈夫です。書き出して、分けて、小さな1歩に変えます。', 'Heart', '心')}
+      ${careNote()}
+      <div class="grid-2">
+        <div class="col">
+          <section class="card" data-tone="mint">${deco('Mood &amp; Sleep', '眠')}${cardHead('moon', '気分と睡眠', '1日1回、気分を選び、ゆうべの睡眠時間を入れる')}
+            ${moodPicker()}
+            <form class="form form-inline sleep-row" data-form="sleep">
+              <label class="meta" for="sleep-h">ゆうべの睡眠</label>
+              <input id="sleep-h" name="h" type="number" inputmode="decimal" min="0" max="16" step="0.5" value="${sl || ''}" placeholder="時間">
+              <button class="btn">記録</button>
+            </form>
+            ${moodChart(14)}
+          </section>
+          <section class="card" data-tone="olive">${deco('Three Lines', '記')}${cardHead('pen', '毎日の3行', '寝る前の3分。意識を「今日起きた事実」に戻します')}
+            ${journalForm()}
+            ${recent.length ? `<details class="journal-past"><summary>これまでの3行（${recent.length}日分）</summary>
+              ${recent.map(j => `<div class="journal"><h3>${jpDate(parseYmd(j.date))}</h3><ul>
+                ${j.did ? `<li><span>できた</span>${esc(j.did)}</li>` : ''}${j.good ? `<li><span>よかった</span>${esc(j.good)}</li>` : ''}${j.next ? `<li><span>次の1歩</span>${esc(j.next)}</li>` : ''}
+              </ul></div>`).join('')}</details>` : ''}
           </section>
         </div>
         <div class="col">
-          <section class="card" data-tone="peach">${deco('Numbers', '算')}${cardHead('calc', '計算ふりかえり', '数字を変えると、その場で答えが変わります。本の例題の答え合わせにも')}
-            ${FORMULAS.map(formulaHtml).join('')}
+          <section class="card" data-tone="lavender">${deco('Worry Notes', '分')}${cardHead('bulb', '不安メモ', '浮かんだら1行。あとで「自分でできること」と「手放すこと」に分けます')}
+            <form class="form form-inline" data-form="worry">
+              <input name="text" required placeholder="例：システムの話についていけるか" aria-label="不安"><button class="btn">書く</button>
+            </form>
+            ${open.length ? `<p class="meta worry-head">まだ分けていない不安 ${open.length}件</p><ul class="worries">${open.map(worryItem).join('')}</ul>`
+              : '<p class="empty">分けていない不安はありません。</p>'}
+            ${sorted.length ? `<details class="worry-done"><summary>この2週間で分けた不安（${sorted.length}件）</summary><ul>
+              ${sorted.map(w => `<li><span class="tag ${w.kind}">${w.kind === 'can' ? '1歩にした' : '手放した'}</span>${esc(w.text)}${w.action ? `<small>→ ${esc(w.action)}</small>` : ''}</li>`).join('')}
+            </ul></details>` : ''}
+          </section>
+          <section class="card" data-tone="sand">${deco('Support', '支')}${cardHead('user', '支えになること')}
+            <ul class="care-list">
+              <li>睡眠を、学習より先に確保する</li>
+              <li>1日10分歩く</li>
+              <li>日曜に15分、今週の積み上げを見て、不安を分ける</li>
+              <li>家族に、今の不安と入社後の線（時間・家庭の時間）を話しておく</li>
+            </ul>
+            <div class="row"><button class="btn-line" data-act="kokoro-week">今週の振り返りをClaudeと</button><button class="btn-line" data-act="down">今日はしんどい</button></div>
           </section>
         </div>
       </div>`;
@@ -939,19 +1145,19 @@
         <div class="col">
           <section class="card" data-tone="peach">${deco('Record', '記')}${cardHead('plus', 'できたことを記録する')}
             <form class="form" data-form="win">
-              <input name="text" required placeholder="例：職務経歴書の実績を1つ書き直した" aria-label="できたこと">
-              <div class="row"><select name="cat" aria-label="分類" style="width:auto">${catOptions('job')}</select><button class="btn">記録する</button></div>
+              <input name="text" required placeholder="例：引き継ぎの一覧を作った" aria-label="できたこと">
+              <div class="row"><select name="cat" aria-label="分類" style="width:auto">${catOptions(MAIN)}</select><button class="btn">記録する</button></div>
             </form>
           </section>
           <section class="card" data-tone="pink">${deco('This Week', '週')}${cardHead('chart', `今週 ${week.length}件`, '直近14日の記録')}
             ${barsHtml(14)}
-            ${counts.length ? `<p class="week-sum">${counts.map(([c, n]) => `<span data-cat="${c}">${CATS[c]} ${n}</span>`).join('')}</p>` : '<p class="empty">今週の記録はまだありません。</p>'}
+            ${counts.length ? `<p class="week-sum">${counts.map(([c, n]) => `<span data-cat="${c}">${esc(catLabel(c))} ${n}</span>`).join('')}</p>` : '<p class="empty">今週の記録はまだありません。</p>'}
           </section>
         </div>
         <div class="col">
           <section class="card">${deco('All Records', '積')}${cardHead('stack', `これまで ${S.wins.length}件`)}
             ${Object.keys(byDay).length ? Object.entries(byDay).map(([d, ws]) => `<div class="day"><h3>${jpDate(parseYmd(d))}</h3>
-              ${ws.map(w => `<div class="win" data-cat="${w.cat}"><p><span class="win-cat">${CATS[w.cat] || ''}</span>${esc(w.text)}</p>
+              ${ws.map(w => `<div class="win" data-cat="${w.cat}"><p><span class="win-cat">${esc(catLabel(w.cat))}</span>${esc(w.text)}</p>
                 <button class="btn-icon" data-act="win-del" data-id="${w.id}" aria-label="「${esc(w.text)}」を消す">×</button></div>`).join('')}</div>`).join('')
               : '<p class="empty">最初の1件を記録しましょう。</p>'}
           </section>
@@ -981,8 +1187,8 @@
           <form class="col" data-form="settings">
           <section class="card" data-tone="olive">${deco('Destination', '志')}${cardHead('target', '目的地', '「きょう」の一番上と、各項目の下に表示されます')}
             <div class="form">
-              <label>3〜5年後にどうなっていたいか<textarea name="vision" rows="3">${esc(S.vision)}</textarea></label>
-              <label>転職活動は、目的地にどうつながるか<input name="whyJob" value="${esc(why('job'))}"></label>
+              <label>目指す姿（北極星）<textarea name="vision" rows="3">${esc(S.vision)}</textarea></label>
+              <label>${esc(catLabel(MAIN))}は、目的地にどうつながるか<input name="whyPm" value="${esc(why(MAIN))}"></label>
               <label>note は<input name="whyNote" value="${esc(why('note'))}"></label>
               <label>音楽は<input name="whyMusic" value="${esc(why('music'))}"></label>
               <label>診断士は<input name="whyStudy" value="${esc(why('study'))}"></label>
@@ -997,6 +1203,10 @@
               <div class="pair">
                 <label>note（週に何本）<input type="number" min="1" name="gNote" value="${S.goals.note}"></label>
                 <label>音楽（月に何曲）<input type="number" min="1" name="gMusic" value="${S.goals.music}"></label>
+              </div>
+              <div class="pair">
+                <label>学習の目標（時間）<input type="number" min="1" name="lGoal" value="${learnGoal()}"></label>
+                <label>学習を数え始める日<input type="date" name="lFrom" value="${esc(learnFrom())}"></label>
               </div>
             </div>
           </section>
@@ -1059,7 +1269,7 @@
   }
 
   // ── 描画 ──
-  const VIEWS = { today: viewToday, share: viewShare, study: viewStudy, log: viewLog, settings: viewSettings };
+  const VIEWS = { today: viewToday, share: viewShare, pm: () => studyView('pm'), study: () => studyView('shindan'), kokoro: viewKokoro, log: viewLog, settings: viewSettings };
   const route = () => { const r = location.hash.replace(/^#\/?/, ''); return VIEWS[r] ? r : 'today'; };
   function render(routeChanged = false) {
     const y = window.scrollY;
@@ -1112,35 +1322,60 @@
         if ('quiz' in el.dataset && quiz) { quiz.i += 1; quiz.shown = false; }
         render(); break;
       case 'quiz-start': {
-        const due = shuffle(dueTerms());
-        const fresh = shuffle(allTerms().filter(t => !S.study[t.id]));
-        const rest = shuffle(allTerms().filter(t => S.study[t.id] && !due.includes(t)));
-        quiz = { q: [...due, ...fresh, ...rest].slice(0, 10).map(t => t.id), i: 0, shown: false };
-        $('#quiz').innerHTML = quizHtml(); break;
+        const d = el.dataset.d || 'shindan';
+        const due = shuffle(dueTerms(d));
+        const fresh = shuffle(allTerms(d).filter(t => !S.study[t.id]));
+        const rest = shuffle(allTerms(d).filter(t => S.study[t.id] && !due.includes(t)));
+        quiz = { d, q: [...due, ...fresh, ...rest].slice(0, 10).map(t => t.id), i: 0, shown: false };
+        $('#quiz').innerHTML = quizHtml(d); break;
       }
-      case 'quiz-show': quiz.shown = true; $('#quiz').innerHTML = quizHtml(); break;
-      case 'quiz-end': quiz = null; $('#quiz').innerHTML = quizHtml(); break;
+      case 'quiz-show': quiz.shown = true; $('#quiz').innerHTML = quizHtml(quiz.d); break;
+      case 'quiz-end': { const d = quiz ? quiz.d : 'shindan'; quiz = null; $('#quiz').innerHTML = quizHtml(d); break; }
       case 'show-term': {
         const t = termById(id); if (!t) return;
-        searchQ = t.t;
-        if (route() !== 'study') { location.hash = '#/study'; return; }
-        $('#q').value = searchQ; $('#results').innerHTML = resultsHtml(searchQ);
+        const d = domOf(t), r = d === 'pm' ? 'pm' : 'study';
+        searchQ[d] = t.t;
+        if (route() !== r) { location.hash = `#/${r}`; return; }
+        $('#q').value = searchQ[d]; $('#results').innerHTML = resultsHtml(searchQ[d], d);
         $('#q').scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
       }
-      case 'term-del':
+      case 'term-del': {
         if (!confirm('自分で登録した用語を消しますか？')) return;
-        markDeleted(id); S.myTerms = S.myTerms.filter(x => x.id !== id); delete S.study[id]; save(); searchQ = ''; render(); break;
+        const d = domOf(termById(id));
+        markDeleted(id); S.myTerms = S.myTerms.filter(x => x.id !== id); delete S.study[id]; save(); searchQ[d] = ''; render(); break;
+      }
       case 'qq-answer': {
+        const d = (el.closest('.qq-slot') || {}).dataset?.d || 'shindan';
+        const qq = qqs[d];
         if (!qq || qq.picked !== null) return;
         qq.picked = Number(el.dataset.i);
         if (qq.ref) review(qq.ref, qq.picked === qq.answer, true);
         refreshQQ(); break;
       }
-      case 'qq-next': qq = nextQuestion(); refreshQQ(); break;
+      case 'qq-next': { const d = (el.closest('.qq-slot') || {}).dataset?.d || 'shindan'; qqs[d] = nextQuestion(d); refreshQQ(); break; }
       case 'x-term': { // リンクはそのまま開き、積み上げにも残す
-        const t = termById(id); if (t) addWin('study', `Xで「${t.t}」を紹介した`); break;
+        const t = termById(id); if (t) addWin(isPm(t) ? MAIN : 'study', `Xで「${t.t}」を紹介した`); break;
       }
-      case 'x-quiz': if (qq) addWin('study', `Xで診断士の問題を出題した`); break;
+      case 'x-quiz': if (qqs.shindan) addWin('study', `Xで診断士の問題を出題した`); break;
+      case 'mood': {
+        const v = Number(el.dataset.v), k = ymd(), first = !moodOf(k).m;
+        S.mood = { ...S.mood, [k]: { ...moodOf(k), m: v, u: Date.now() } };
+        save();
+        if (first) toast(v <= 2 ? '記録しました。つらい日は、5分版だけで十分です。' : '記録しました。');
+        render(); break;
+      }
+      case 'worry-let': {
+        const w = (S.worries || []).find(x => x.id === id); if (!w) return;
+        w.kind = 'let'; w.u = Date.now(); save(); toast('手放しました。考える時間を決めなくて大丈夫です。'); render(); break;
+      }
+      case 'worry-del': markDeleted(id); S.worries = (S.worries || []).filter(x => x.id !== id); save(); render(); break;
+      case 'kokoro-week': {
+        const from = weekStart();
+        const js = (S.journal || []).filter(j => j.date >= from).map(j => `・${j.date}：できた「${j.did || '-'}」／よかった「${j.good || '-'}」`).join('\n');
+        const wsx = (S.worries || []).filter(w => w.date >= from).map(w => `・${w.text}${w.kind === 'can' ? `（1歩：${w.action}）` : w.kind === 'let' ? '（手放した）' : '（まだ分けていない）'}`).join('\n');
+        const p = `今週の振り返りを手伝ってください。責めたり、根拠のない励ましをしたりせずに聞いてください。\n\n今週の3行：\n${js || '（なし）'}\n\n今週の不安メモ：\n${wsx || '（なし）'}\n\n次の3つをお願いします。\n1. 今週できていたこと（事実から）\n2. まだ分けていない不安を、「自分でできること」と「手放すこと」に分ける手伝い\n3. 来週の小さな1歩を1つ。いつ・どこで・何をするかまで`;
+        window.open(claudeUrl(p), '_blank', 'noopener'); break;
+      }
       case 'art-idea': {
         const it = feedItem(id); if (!it) return;
         S.ideas.push({ id: uid(), cat: 'note', title: `「${it.title}」を読んで考えたこと`, stage: 0, created: ymd(), src: it.link, u: Date.now() });
@@ -1222,11 +1457,46 @@
         save(); render(); toast('ネタ帳に追加しました。'); break;
       case 'win':
         addWin(d.cat, d.text.trim()); render(); break;
-      case 'search':
-        searchQ = d.q; $('#results').innerHTML = resultsHtml(searchQ); break;
-      case 'myterm':
-        S.myTerms.push({ u: Date.now(), id: `my-${uid()}`, t: d.t.trim(), s: d.s, one: d.one.trim(), body: d.body.trim(), y: [] });
-        save(); searchQ = d.t.trim(); render(); toast('自分の辞書に登録しました。'); break;
+      case 'search': {
+        const dm = f.dataset.d || 'shindan';
+        searchQ[dm] = d.q; $('#results').innerHTML = resultsHtml(searchQ[dm], dm); break;
+      }
+      case 'myterm': {
+        const dm = f.dataset.d || 'shindan';
+        S.myTerms.push({ u: Date.now(), id: `my-${uid()}`, d: dm, t: d.t.trim(), s: d.s, one: d.one.trim(), body: d.body.trim(), y: [] });
+        save(); searchQ[dm] = d.t.trim(); render(); toast('自分の辞書に登録しました。'); break;
+      }
+      case 'learn': {
+        const min = Math.max(1, Math.round(+d.min || 0));
+        addWin(MAIN, `${d.what.trim()}（${hm(min)}）`, { min }); render(); break;
+      }
+      case 'journal': {
+        const did = d.did.trim(), good = d.good.trim(), next = d.next.trim();
+        if (!did && !good && !next) { toast('1行だけでも大丈夫です。'); return; }
+        const j = todayJournal();
+        if (j) Object.assign(j, { did, good, next, u: Date.now() });
+        else {
+          S.journal = [...(S.journal || []), { id: uid(), date: ymd(), did, good, next, u: Date.now() }];
+          S.wins.push({ id: uid(), date: ymd(), ts: Date.now(), cat: 'mind', text: '寝る前の3行を書いた', key: `journal-${ymd()}` });
+        }
+        save(); toast(next ? `明日の最初の1歩は「${next}」。おやすみなさい。` : '残しました。'); render(); break;
+      }
+      case 'worry':
+        S.worries = [...(S.worries || []), { id: uid(), date: ymd(), text: d.text.trim(), kind: '', u: Date.now() }];
+        save(); toast('書き出しました。分けるのは、あとででも大丈夫です。'); render(); break;
+      case 'worry-can': {
+        const w = (S.worries || []).find(x => x.id === f.dataset.id); if (!w) return;
+        const action = d.action.trim();
+        Object.assign(w, { kind: 'can', action, u: Date.now() });
+        S.tasks.push({ id: uid(), cat: 'mind', what: action, when: '', mini: '', done: false, created: ymd(), u: Date.now() });
+        save(); toast('次の1歩にしました。「きょう」に出ます。'); render(); break;
+      }
+      case 'sleep': {
+        const h = Math.round((+d.h || 0) * 2) / 2, k = ymd();
+        if (!h) { toast('時間を入れてください。'); return; }
+        S.mood = { ...S.mood, [k]: { ...moodOf(k), s: h, u: Date.now() } };
+        save(); toast(h < 6 ? '記録しました。今夜は早めに休めるといいですね。' : '記録しました。'); render(); break;
+      }
       case 'sync': {
         const next = { owner: d.owner.trim(), repo: d.repo.trim(), token: d.token.trim(), pass: d.pass };
         if (!next.owner || !next.repo || !next.token || !next.pass) { toast('4つの欄をすべて入れてください。'); return; }
@@ -1236,12 +1506,13 @@
       }
       case 'settings':
         S.facts = d.facts.split('\n').map(s => s.trim()).filter(Boolean);
-        S.mainLabel = d.mainLabel.trim() || '転職活動';
+        S.mainLabel = d.mainLabel.trim() || CATS[MAIN];
         S.goals = { note: Math.max(1, +d.gNote || 1), music: Math.max(1, +d.gMusic || 1) };
         S.links = { note: d.lNote.trim(), youtube: d.lYoutube.trim(), x: d.lX.trim() };
         S.settingsAt = Date.now();
         S.vision = d.vision.trim();
-        S.why = { job: d.whyJob.trim(), note: d.whyNote.trim(), music: d.whyMusic.trim(), study: d.whyStudy.trim() };
+        S.why = { ...S.why, pm: d.whyPm.trim(), note: d.whyNote.trim(), music: d.whyMusic.trim(), study: d.whyStudy.trim() };
+        S.learn = { goal: Math.max(1, +d.lGoal || 35), from: d.lFrom || '' };
         S.interests = d.interests.split(/[、,，\s]+/).map(x => x.trim()).filter(Boolean);
         save(); toast('設定を保存しました。'); break;
     }
@@ -1251,8 +1522,9 @@
   document.addEventListener('input', e => {
     const el = e.target;
     if (el.id === 'q') {
+      const dm = el.dataset.d || 'shindan';
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => { searchQ = el.value; $('#results').innerHTML = resultsHtml(searchQ); }, 200);
+      searchTimer = setTimeout(() => { searchQ[dm] = el.value; $('#results').innerHTML = resultsHtml(searchQ[dm], dm); }, 200);
       return;
     }
     const box = el.closest('.formula');
