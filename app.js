@@ -23,6 +23,7 @@
     interests: [], read: {},
     vision: '', why: { pm: '', job: '', note: '', music: '', study: '' },
     journal: [], worries: [], mood: {}, pmDays: {}, learn: { goal: 35, from: '' },
+    profile: { name: '', avatar: '' },
     deleted: {}, settingsAt: 0,
   });
   // 転職活動のころ（v1）・入社準備のころ（v2）のデータを、「PMへの道」が主役の形にそろえる
@@ -62,7 +63,7 @@
   // 両方の端末で変更があったときは、記録を id ごとに突き合わせて合体させる。
   const SYNC_KEY = 'tsumiage.sync';
   const SYNC_PATH = 'tsumiage-data.json';
-  const SETTING_KEYS = ['mainLabel', 'goals', 'facts', 'links', 'interests', 'vision', 'why', 'learn'];
+  const SETTING_KEYS = ['mainLabel', 'goals', 'facts', 'links', 'interests', 'vision', 'why', 'learn', 'profile'];
   let sync = (() => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch (e) { return {}; } })();
   const syncReady = () => Boolean(sync.owner && sync.repo && sync.token && sync.pass);
   const saveSync = () => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) { /* 無視 */ } };
@@ -600,18 +601,25 @@
     if (!recs.length) return `<p class="empty">${esc(name)} の記事はすべて読みました。新しい記事が出たら、ここに表示します。</p>`;
     if (mode === 'today') return articleCard(recs[0], { compact: true });
     const at = new Date(feed.at);
-    return `${recs.slice(0, 3).map(it => articleCard(it)).join('')}
-      <p class="meta feed-foot">${feedState[s] === 'error' ? '最新の記事を読み込めなかったため、前回の内容を表示しています。' : ''}
-        記事一覧の更新：${at.getMonth() + 1}月${at.getDate()}日 ${pad(at.getHours())}:${pad(at.getMinutes())}
-        <button class="btn-quiet" data-act="feed-retry">いま更新する</button></p>`;
+    return `${recs.slice(0, 6).map(it => `<div class="card hs-l">${articleCard(it)}</div>`).join('')}
+      <div class="card hs-s feed-foot-card"><p class="meta">${feedState[s] === 'error' ? '最新の記事を読み込めなかったため、前回の内容を表示しています。' : ''}
+        記事一覧の更新：${at.getMonth() + 1}月${at.getDate()}日 ${pad(at.getHours())}:${pad(at.getMinutes())}</p>
+        <button class="btn-line" data-act="feed-retry">いま更新する</button></div>`;
   }
   // きょうの画面：3つの読み物から1本ずつ。2本以上読んだら、つなげて考えるリンクを出す
+  // 横にスライドする帯。PCでは左右の矢印でも動かせる
+  const bandHtml = (title, inner, sub = '') => `<section class="band">
+      <div class="band-head"><h2 class="band-title">${title}</h2><span class="hand-note" aria-hidden="true">swipe →</span>${sub ? `<p class="band-sub">${sub}</p>` : ''}
+        <div class="band-nav"><button class="round-mini" data-act="hs" data-dir="-1" aria-label="前へ">‹</button><button class="round-mini" data-act="hs" data-dir="1" aria-label="次へ">›</button></div></div>
+      <div class="hscroll">${inner}</div>
+    </section>`;
   function todayReadHtml() {
     const done = readToday();
-    return `${SRC_IDS.map(s => `<div class="read-sec"><p class="read-src">${esc(SOURCES[s].name)}<span>${esc(SOURCES[s].sub)}</span></p>
-        <div class="feed-slot" data-mode="today" data-src="${s}">${feedSlotHtml('today', s)}</div></div>`).join('')}
-      ${done.length >= 2 ? `<p class="read-link"><a class="link" href="${claudeUrl(linkPrompt(done))}" target="_blank" rel="noopener">今日読んだ${done.length}本をつなげて考える（Claude）</a></p>`
-        : `<p class="meta read-link">今日読んだ記事：${done.length}本。2本読むと、共通点を考えるリンクが出ます。</p>`}`;
+    const sub = done.length >= 2 ? `<a class="link" href="${claudeUrl(linkPrompt(done))}" target="_blank" rel="noopener">今日読んだ${done.length}本をつなげて考える（Claude）</a>`
+      : `問いを1つ持って読み、学びを1行残す。今日読んだ記事：${done.length}本`;
+    return bandHtml('今日の読みもの', SRC_IDS.map(s => `<section class="card hs-l read-card">
+        <p class="read-src">${esc(SOURCES[s].name)}<span>${esc(SOURCES[s].sub)}</span></p>
+        <div class="feed-slot" data-mode="today" data-src="${s}">${feedSlotHtml('today', s)}</div></section>`).join(''), sub);
   }
   function refreshFeedSlots() { document.querySelectorAll('.feed-slot').forEach(el => { el.innerHTML = feedSlotHtml(el.dataset.mode, el.dataset.src); }); }
   const feedItem = id => {
@@ -820,6 +828,29 @@
       </div></li>`;
   }
 
+  // ── わたし（アイコンと呼び名） ──
+  // アイコンは端末の中で小さく縮めてから保存する（公開されるファイルには入らない）
+  const profile = () => S.profile || { name: '', avatar: '' };
+  const meHtml = (cls = 'me') => {
+    const pr = profile();
+    return pr.avatar ? `<img class="${cls}" src="${esc(pr.avatar)}" alt="">`
+      : `<span class="${cls}" aria-hidden="true">${esc((pr.name || 'M').slice(0, 1))}</span>`;
+  };
+  function shrinkImage(file, size = 192) {
+    return new Promise((ok, ng) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = c.height = size;
+        const k = Math.max(size / img.width, size / img.height), w = img.width * k, h = img.height * k;
+        c.getContext('2d').drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        URL.revokeObjectURL(img.src);
+        ok(c.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = ng;
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
   // ── 画面：きょう ──
   function viewToday() {
     const total = S.wins.length;
@@ -835,50 +866,42 @@
     const last7 = Array.from({ length: 7 }, (_, i) => countOn(addDays(ymd(), -i))).reduce((a, b) => a + b, 0);
     return `
       ${syncReady() && sync.error ? `<p class="alert sync-status is-error" role="status">${esc(syncStatusText())}</p>` : ''}
+      <header class="page-head today-head">
+        <div class="hello">
+          <a href="#/settings" aria-label="わたしの設定">${meHtml()}</a>
+          <p class="hello-text"><small>${jpDate()}</small><b><span class="hand">Hello,</span> ${esc(profile().name || 'there')}</b></p>
+          <a class="round-btn" href="#/kokoro" aria-label="こころ">${icon('heart')}</a>
+        </div>
+        <p class="hand-cap">my north star</p>
+        ${S.vision ? `<h1 class="vision-text scribble">${esc(S.vision)}</h1>`
+          : '<h1 class="vision-text scribble">目指す姿を決めましょう</h1><p class="lead"><a class="link" href="#/settings">設定</a>で目指す姿を書くと、ここに表示されます。</p>'}
+      </header>
+      ${bandHtml('きょうの様子', `
+        <section class="card stat hs-s" data-tone="peach">
+          <div class="stat-top"><span class="badge">${icon('stack')}</span><b class="stat-num">${total}</b></div>
+          <p class="stat-label">積み上げ</p><p class="stat-sub">直近14日で記録した日</p>
+          ${gaugeHtml()}
+        </section>
+        <section class="card stat hs-s">
+          <div class="stat-top"><span class="badge">${icon('chart')}</span><b class="stat-num">${week.length}</b></div>
+          <p class="stat-label">今週</p>
+          <dl class="stat-list"><dt>PM</dt><dd>${wk(MAIN)}</dd><dt>発信</dt><dd>${wk(['note', 'music'])}</dd><dt>診断士</dt><dd>${wk('study')}</dd></dl>
+        </section>
+        <section class="card hs-m" data-tone="mint">
+          ${cardHead('heart', 'こころ', '気分を1つ選ぶ。寝る前に3行')}
+          ${moodPicker()}
+          <p class="hand-ja">ちゃんと休むのも、一歩のうち。</p>
+          <p class="meta kokoro-foot">${tj ? '今日の3行は書きました。' : '今日の3行はまだです。'}<a class="link" href="#/kokoro">${tj ? '3行を見る' : '3行を書く'}・不安メモへ</a></p>
+        </section>
+        <section class="card hs-m">
+          ${cardHead('chart', 'この7日間', `${last7}件の記録`)}
+          ${barsHtml(7)}
+        </section>`)}
       <div class="today-grid">
         <div class="col">
-          <header class="page-head">
-            <span class="zh-mark is-motto" aria-hidden="true">一步一腳印</span>
-            <p class="en-display" aria-hidden="true">Your Journey</p>
-            <p class="eyebrow">${jpDate()}　目的地</p>
-            ${S.vision ? `<h1 class="vision-text">${esc(S.vision)}</h1>`
-              : '<h1>目的地を決めましょう</h1><p class="lead"><a class="link" href="#/settings">設定</a>で、3〜5年後にどうなっていたいかを書くと、ここに表示されます。</p>'}
-          </header>
-          <section class="card" data-tone="olive">
-            ${deco('Your Coach', '伴')}${cardHead('spark', 'コーチ', '記録した事実をもとに声をかけます')}
-            ${weekStrip()}
-          </section>
-          <div class="bubbles" aria-label="きょうのことば">
-            ${lines.map(l => `<div class="bubble-row"><span class="avatar">${icon('spark')}</span><p class="bubble">${esc(l)}</p></div>`).join('')}
-            ${fact ? `<div class="bubble-row"><span class="avatar">${icon('spark')}</span><p class="bubble"><small>思い出してほしい事実</small>${esc(fact)}</p></div>` : ''}
-          </div>
-          <div class="stats">
-            <section class="card stat" data-tone="peach">
-              ${deco('Stacked', '積')}
-              <div class="stat-top"><span class="badge">${icon('stack')}</span><b class="stat-num">${total}</b></div>
-              <p class="stat-label">積み上げ</p><p class="stat-sub">直近14日で記録した日</p>
-              ${gaugeHtml()}
-            </section>
-            <section class="card stat" data-tone="sky">
-              ${deco('This Week', '週')}
-              <div class="stat-top"><span class="badge">${icon('chart')}</span><b class="stat-num">${week.length}</b></div>
-              <p class="stat-label">今週</p>
-              <dl class="stat-list"><dt>PM</dt><dd>${wk(MAIN)}</dd><dt>発信</dt><dd>${wk(['note', 'music'])}</dd><dt>診断士</dt><dd>${wk('study')}</dd></dl>
-            </section>
-          </div>
-          <section class="card" data-tone="mint">
-            ${deco('Heart', '心')}${cardHead('heart', 'こころ', '気分を1つ選ぶ。寝る前に3行')}
-            ${moodPicker()}
-            <p class="meta kokoro-foot">${tj ? '今日の3行は書きました。' : '今日の3行はまだです。'}<a class="link" href="#/kokoro">${tj ? '3行を見る' : '3行を書く'}・不安メモへ</a></p>
-          </section>
-          <section class="card" data-tone="pink">
-            ${deco('Seven Days', '跡')}${cardHead('chart', 'この7日間', `${last7}件の記録。小さな1件も、ちゃんと数えています。`)}
-            ${barsHtml(7)}
-          </section>
-        </div>
-        <div class="col">
           <section class="card" data-tone="coral">
-            ${deco('Main Role', '進')}${cardHead('target', esc(catLabel(MAIN)), '主役')}
+            ${cardHead('target', esc(catLabel(MAIN)), '主役')}
+            <p class="hand-cap in-card">one step at a time</p>
             ${whyHtml(MAIN)}
             ${learnHtml()}
             ${pmWord ? `<div class="wod">
@@ -889,13 +912,19 @@
               : '<p class="empty">次の1歩がまだありません。「いつ・どこで・何を」まで決めておくと、動き出しやすくなります。</p>'}
             ${taskForm(MAIN)}
           </section>
-          <section class="card" data-tone="lavender">
-            ${deco('Side Role', '發')}${cardHead('pen', '発信', '脇役')}
-            ${goalRow('note')}${goalRow('music')}
-            ${subTasks.length ? `<ul class="tasks">${subTasks.map(taskItem).join('')}</ul>` : ''}
+          <section class="card">
+            ${cardHead('spark', 'コーチ', '記録した事実をもとに声をかけます')}
+            <p class="hand-cap in-card">you're doing fine</p>
+            ${weekStrip()}
+            <div class="bubbles" aria-label="きょうのことば">
+              ${lines.map(l => `<div class="bubble-row"><span class="avatar">${icon('spark')}</span><p class="bubble">${esc(l)}</p></div>`).join('')}
+              ${fact ? `<div class="bubble-row"><span class="avatar">${icon('spark')}</span><p class="bubble"><small>思い出してほしい事実</small>${esc(fact)}</p></div>` : ''}
+            </div>
           </section>
+        </div>
+        <div class="col">
           <section class="card" data-tone="yellow">
-            ${deco('Daily Study', '學')}${cardHead('book', '診断士', '1日1語・1問')}
+            ${cardHead('book', '診断士', '1日1語・1問')}
             ${whyHtml('study')}
             ${word ? `<div class="wod">
               <div class="wod-text"><p class="term-subj">今日の1語</p>
@@ -907,14 +936,16 @@
             <div class="qq-slot" data-d="shindan">${qqHtml()}</div>
             <p class="meta qq-foot">${studied ? `今日は${studied}回ふりかえりました。` : ''}<a class="link" href="#/study">用語さがしと計算ふりかえりへ</a></p>
           </section>
-          <section class="card" data-tone="sand">
-            ${deco('Today&rsquo;s Read', '讀')}${cardHead('news', '今日の読みもの', '問いを1つ持って読み、学びを1行残す')}
-            ${todayReadHtml()}
+          <section class="card">
+            ${cardHead('pen', '発信', '脇役')}
+            ${goalRow('note')}${goalRow('music')}
+            ${subTasks.length ? `<ul class="tasks">${subTasks.map(taskItem).join('')}</ul>` : ''}
           </section>
         </div>
       </div>
+      ${todayReadHtml()}
       <div class="down-wrap">
-        <p class="motto" aria-hidden="true"><span>一步一腳印</span><em>one step, one footprint</em></p>
+        <p class="hand-ja">しんどい日は、5分版だけで十分。</p>
         <button class="btn-line" data-act="down">今日はしんどい</button>
       </div>`;
   }
@@ -940,11 +971,15 @@
         ${doneN ? `<p class="meta">公開済み ${doneN}件</p>` : ''}`;
     };
     return `
-      ${pageHead('発信', `ネタを書きとめて、公開まで進めます。note は週${S.goals.note}本、音楽は月${S.goals.music}曲が目安です。`, 'Create &amp; Share', '創')}
+      ${pageHead('発信', `ネタを書きとめて、公開まで進めます。note は週${S.goals.note}本、音楽は月${S.goals.music}曲が目安です。読みものは左右にスライドして選び、読んだら「読んだ」で積み上げに残します。`)}
+      ${SRC_IDS.map(s => `<section class="band">
+        <div class="band-head"><h2 class="band-title">${esc(SOURCES[s].name)}</h2><span class="hand-note" aria-hidden="true">swipe →</span><p class="band-sub">${esc(SOURCES[s].sub)}</p>
+          <div class="band-nav"><button class="round-mini" data-act="hs" data-dir="-1" aria-label="前へ">‹</button><button class="round-mini" data-act="hs" data-dir="1" aria-label="次へ">›</button></div></div>
+        <div class="hscroll feed-slot" data-mode="list" data-src="${s}">${feedSlotHtml('list', s)}</div>
+      </section>`).join('')}
       <div class="grid-2">
         <div class="col">
-          <section class="card" data-tone="lavender">${deco('Pace', '律')}${cardHead('pen', '今週・今月の目安')}${goalRow('note')}${goalRow('music')}</section>
-          <section class="card" data-tone="mint">${deco('Idea Book', '想')}${cardHead('bulb', 'ネタ帳', 'ネタ → 下書き → 公開')}
+          <section class="card" data-tone="mint">${cardHead('bulb', 'ネタ帳', 'ネタ → 下書き → 公開')}
             <form class="form form-row" data-form="idea">
               <select name="cat" aria-label="分類"><option value="note">note</option><option value="music">音楽</option></select>
               <input name="title" required placeholder="例：〇〇の制作ノート" aria-label="ネタ">
@@ -952,15 +987,13 @@
             </form>
             <div class="ideas">${ideaList('note')}${ideaList('music')}</div>
           </section>
-          <section class="card" data-tone="sky">${deco('Channels', '連')}${cardHead('link', '発信先')}
+        </div>
+        <div class="col">
+          <section class="card">${cardHead('pen', '今週・今月の目安')}${goalRow('note')}${goalRow('music')}</section>
+          <section class="card">${cardHead('link', '発信先')}
             ${linkItems.length ? `<p class="links">${linkItems.map(([k, n]) => `<a class="btn-line" href="${esc(L[k])}" target="_blank" rel="noopener">${n}を開く</a>`).join('')}</p>`
               : '<p class="empty">設定でURLを登録すると、ここから開けます。</p>'}
           </section>
-        </div>
-        <div class="col">
-          ${SRC_IDS.map(s => `<section class="card" data-tone="sand">${deco('Reading List', '讀')}${cardHead('news', `${esc(SOURCES[s].name)} のおすすめ`, `${esc(SOURCES[s].sub)}。関心のあるキーワードと、PM・診断士の用語に近い記事から順に並べています`)}
-            <div class="feed-slot" data-mode="list" data-src="${s}">${feedSlotHtml('list', s)}</div>
-          </section>`).join('')}
         </div>
       </div>`;
   }
@@ -1090,6 +1123,14 @@
     return `
       ${pageHead('こころ', '不安は消そうとしなくて大丈夫です。書き出して、分けて、小さな1歩に変えます。', 'Heart', '心')}
       ${careNote()}
+      <section class="card mindful-card">
+        <img class="mindful-img" src="mindful.jpg" alt="ごちゃごちゃに絡まった線の頭（MIND FULL）と、ひとつの円に整った頭（MINDFUL）の手描きの絵">
+        <div class="mindful-text">
+          <p class="hand-cap big">mind full → mindful</p>
+          <p class="hand-ja big">頭の中がいっぱいのときは、<br>書き出して、分けて、整える。</p>
+          <p class="meta">不安メモに1行書く → 「自分でできること」と「手放すこと」に分ける → 小さな1歩にする。</p>
+        </div>
+      </section>
       <div class="grid-2">
         <div class="col">
           <section class="card" data-tone="mint">${deco('Mood &amp; Sleep', '眠')}${cardHead('moon', '気分と睡眠', '1日1回、気分を選び、ゆうべの睡眠時間を入れる')}
@@ -1168,9 +1209,16 @@
   // ── 画面：設定 ──
   function viewSettings() {
     return `
-      ${pageHead('設定', '同期、目的地、表示などを変えられます。', 'Settings', '設')}
+      ${pageHead('設定', 'わたし、同期、目指す姿、表示などを変えられます。', 'Settings', '設')}
       <div class="grid-2">
         <div class="col">
+          <section class="card" id="me">${cardHead('user', 'わたし', '「きょう」のあいさつに使います。画像はこの端末と同期先にだけ保存されます')}
+            <div class="profile-row">${meHtml()}
+              <div class="row">
+                <label class="btn-line">画像を選ぶ<input type="file" accept="image/*" data-act="avatar" hidden></label>
+                ${profile().avatar ? '<button type="button" class="btn-quiet" data-act="avatar-del">画像を外す</button>' : ''}
+              </div></div>
+          </section>
           <section class="card" id="sync" data-tone="sky">${deco('Sync', '同')}${cardHead('sync', 'PCとスマホの同期', 'GitHub の非公開リポジトリに、合言葉で暗号化して保存します')}
             <form class="form" data-form="sync" autocomplete="off">
               <label>GitHub のユーザー名<input name="owner" value="${esc(sync.owner || '')}" autocapitalize="off" spellcheck="false" placeholder="例：oogaiMakito"></label>
@@ -1185,8 +1233,9 @@
             </form>
           </section>
           <form class="col" data-form="settings">
-          <section class="card" data-tone="olive">${deco('Destination', '志')}${cardHead('target', '目的地', '「きょう」の一番上と、各項目の下に表示されます')}
+          <section class="card" data-tone="olive">${deco('Destination', '志')}${cardHead('target', '目指す姿と呼び名', '「きょう」の一番上と、各項目の下に表示されます')}
             <div class="form">
+              <label>呼び名（あいさつに表示）<input name="pName" value="${esc(profile().name)}" placeholder="例：Makito"></label>
               <label>目指す姿（北極星）<textarea name="vision" rows="3">${esc(S.vision)}</textarea></label>
               <label>${esc(catLabel(MAIN))}は、目的地にどうつながるか<input name="whyPm" value="${esc(why(MAIN))}"></label>
               <label>note は<input name="whyNote" value="${esc(why('note'))}"></label>
@@ -1388,6 +1437,12 @@
         if (!confirm('この端末の同期設定を消します（記録は消えません）。よろしいですか？')) return;
         sync = {}; saveSync(); render(); toast('この端末の同期をやめました。'); break;
       case 'down': openDown(); break;
+      case 'hs': {
+        const sc = el.closest('.band').querySelector('.hscroll');
+        const step = Math.max(240, sc.clientWidth * 0.8);
+        sc.scrollBy({ left: Number(el.dataset.dir) * step, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+        break;
+      }
       case 'down-close': $('#down').close(); break;
       case 'tiny':
         addWin('other', `しんどい日に「${el.dataset.v}」をした`);
@@ -1402,7 +1457,7 @@
         const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `積み上げ帳-${ymd()}.json`;
+        a.download = `Mindwalk-${ymd()}.json`;
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
         toast('書き出しました。もう一方の端末で「読み込む」を押してください。'); break;
@@ -1412,6 +1467,8 @@
         try { if (v) localStorage.setItem('tsumiage.theme', v); else localStorage.removeItem('tsumiage.theme'); } catch (err) { /* 無視 */ }
         applyTheme(); break;
       }
+      case 'avatar-del':
+        S.profile = { ...profile(), avatar: '' }; S.settingsAt = Date.now(); save(); render(); break;
       case 'reset':
         if (!confirm(syncReady() ? 'この端末のデータを消します。同期を設定しているので、次の同期でほかの端末のデータから戻ります。よろしいですか？' : 'この端末のデータをすべて消します。よろしいですか？')) return;
         S = blank(); save(); render(); toast('消しました。'); break;
@@ -1420,6 +1477,13 @@
 
   document.addEventListener('change', e => {
     const el = e.target;
+    if (el.dataset.act === 'avatar' && el.files[0]) {
+      shrinkImage(el.files[0]).then(url => {
+        S.profile = { ...profile(), avatar: url }; S.settingsAt = Date.now(); save(); render(); toast('アイコンを変えました。');
+      }).catch(() => toast('この画像は読み込めませんでした。'));
+      el.value = '';
+      return;
+    }
     if (el.dataset.act !== 'import' || !el.files[0]) return;
     const reader = new FileReader();
     reader.onload = () => {
@@ -1511,6 +1575,7 @@
         S.links = { note: d.lNote.trim(), youtube: d.lYoutube.trim(), x: d.lX.trim() };
         S.settingsAt = Date.now();
         S.vision = d.vision.trim();
+        S.profile = { ...profile(), name: (d.pName || '').trim() };
         S.why = { ...S.why, pm: d.whyPm.trim(), note: d.whyNote.trim(), music: d.whyMusic.trim(), study: d.whyStudy.trim() };
         S.learn = { goal: Math.max(1, +d.lGoal || 35), from: d.lFrom || '' };
         S.interests = d.interests.split(/[、,，\s]+/).map(x => x.trim()).filter(Boolean);
