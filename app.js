@@ -443,6 +443,45 @@
   const QIITA_PMBOK = 'tag:PMBOK OR PMBOK stocks:>3';
   const mdText = md => String(md || '').replace(/```[\s\S]*?```/g, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/^#+\s*/gm, '').replace(/[*_`>|]/g, '').replace(/\n\s*\n+/g, '\n').trim();
+  // ポッドキャスト：Apple Podcasts の検索API（CORS許可あり）で、キーワード検索と、選んだ番組の最新回を集める。
+  // Spotify はログインが必要なAPIしかないため、各エピソードに「Spotifyで探す」リンクだけを付ける。
+  const POD_TERMS = ['PMBOK', 'プロジェクトマネジメント', 'クリエイティブディレクション', 'Webディレクション'];
+  const POD_SHOWS = [
+    1827797247, // プロジェクトをBetterにする話をしよう
+    1529786264, // Webディレクションやってますラジオ
+    1792697492, // なんでもディレクション
+    1619918199, // プロダクトマネージャーのキャリアラジオ
+    1648834007, // Brand Shift 〜だれも教えてくれない経営とブランドの話〜
+    1698784393, // BTRAXのCEOによるサンフランシスコ・デザイントーク
+    1462902595, // 杉林友彦の『経営はデザインできる』
+  ];
+  const hasJa = t => /[ぁ-んァ-ヶ一-龠]/.test(t || '');
+  async function podcastLoad() {
+    const api = async q => {
+      const res = await fetch(`https://itunes.apple.com/${q}`, { cache: 'no-cache' });
+      if (!res.ok) throw new Error(String(res.status));
+      return (await res.json()).results || [];
+    };
+    const reqs = [
+      ...POD_TERMS.map(t => api(`search?media=podcast&entity=podcastEpisode&country=JP&limit=15&term=${encodeURIComponent(t)}`)),
+      ...POD_SHOWS.map(id => api(`lookup?id=${id}&entity=podcastEpisode&country=JP&limit=6`)),
+    ];
+    const all = (await Promise.allSettled(reqs)).flatMap(r => (r.status === 'fulfilled' ? r.value : []));
+    if (!all.length) throw new Error('empty');
+    const seen = new Set();
+    return all.filter(e => e.wrapperType === 'podcastEpisode' && e.trackViewUrl && (hasJa(e.trackName) || hasJa(e.collectionName)))
+      .filter(e => (seen.has(e.trackId) ? false : seen.add(e.trackId)))
+      .map(e => {
+        const text = plainText(e.description || e.shortDescription || '').slice(0, 4000);
+        return {
+          id: `pod:${e.trackId}`, link: e.trackViewUrl, title: e.trackName, date: Date.parse(e.releaseDate) || 0,
+          desc: text.slice(0, 110) + (text.length > 110 ? '…' : ''), text, show: e.collectionName || '',
+          min: e.trackTimeMillis ? Math.round(e.trackTimeMillis / 60000) : 0,
+        };
+      });
+  }
+  const spotifyUrl = it => `https://open.spotify.com/search/${encodeURIComponent(`${it.show} ${it.title}`.slice(0, 120))}`;
+
   // Qiita の検索API（CORS許可あり。認証なしで1時間60回まで。12時間に1回しか読まないので足りる）
   async function qiitaLoad(query) {
     const res = await fetch(`https://qiita.com/api/v2/items?per_page=30&query=${encodeURIComponent(query)}`, { cache: 'no-cache' });
@@ -458,6 +497,12 @@
       about: 'Qiita（エンジニアの技術記事サイト）のPMBOKに関する記事',
       lens: ['この記事の話は、PMBOK第8版のどの原則・パフォーマンス領域に当たるか', '自分の過去の案件で、同じ場面はどこだったか。そのとき何が足りなかったか', '入社後の最初の案件で、この考え方をどう使うか'],
       load: () => qiitaLoad(QIITA_PMBOK),
+    },
+    podcast: {
+      name: 'ポッドキャスト', sub: 'PM・PMBOK・ディレクションを耳で', key: 'tsumiage.feed.podcast', link: /^https:\/\/podcasts\.apple\.com\//, kind: 'podcast',
+      about: 'Apple Podcasts のエピソード',
+      lens: ['この話を、自分の案件で試すなら何からか', '話し手は、どんな判断の基準を持っているか', 'PMBOK第8版のどの原則・パフォーマンス領域の話か'],
+      load: podcastLoad,
     },
     qiita: {
       name: 'Qiita：PM実践', sub: '現役PMの実践記事', key: 'tsumiage.feed.qiita-pm', link: /^https:\/\/qiita\.com\//,
@@ -560,6 +605,7 @@
   const lensOf = s => pickDaily(SOURCES[s].lens, `lens-${s}`);
   const articlePrompt = it => {
     const src = SOURCES[it.src];
+    if (src.kind === 'podcast') return `ポッドキャスト「${it.show}」のエピソード「${it.title}」の概要です。\nURL：${it.link}\n\n概要：${it.text.slice(0, 900) || '（なし）'}\n\n聴く前に立てた問い：${lensOf(it.src)}\n\n次の3つを、平易な日本語でお願いします。\n1. このエピソードで聴きどころになりそうな点を3つ（概要から推測できる範囲で。推測であることを明記）\n2. 上の問いを深めるための、聴きながら考える問いを2つ\n3. 聴いたあとに試せる小さな行動を1つ`;
     return `${src.about}の記事「${it.title}」について教えてください。\nURL：${it.link}\n\n${it.desc ? `概要：${it.desc}\n\n` : ''}${it.text ? `本文の冒頭：\n${it.text.slice(0, 900)}\n\n` : '本文はURLから読んでください。\n\n'}読む前に立てた問い：${lensOf(it.src)}\n\n次の4つを、平易な日本語でお願いします。\n1. 3行の要約\n2. 上の問いへの、記事から読み取れる答え\n3. これから大企業のシステム・生成AI案件のプロジェクトマネージャーになるWebディレクター（中小企業診断士も勉強中）が、仕事に活かせる示唆を3つ\n4. 理解を確かめる問いを2つ（答えは書かずに。私が答えたら採点してください）`;
   };
   // その日に読んだ記事（積み上げの記録）をまとめて、共通点を考える
@@ -572,33 +618,36 @@
       it.terms.length ? `用語「${it.terms.map(t => t.t).join('」「')}」とつながる` : '',
     ].filter(Boolean).join('。');
     const lines = compact ? [] : keyLines(it, it.hits);
-    return `<article class="article">
+    const pod = SOURCES[it.src] && SOURCES[it.src].kind === 'podcast';
+    return `<article class="article${pod ? ' is-pod' : ''}">
+      ${pod ? `<p class="pod-label"><span aria-hidden="true">🎧</span> ${esc(it.show)}${it.min ? `・${it.min}分` : ''}</p>` : ''}
       <p class="article-date">${d.getFullYear() !== new Date().getFullYear() ? `${d.getFullYear()}年` : ''}${d.getMonth() + 1}月${d.getDate()}日</p>
       <h3 class="article-title"><a href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a></h3>
       ${it.desc ? `<p class="article-desc">${esc(it.desc)}</p>` : ''}
       ${lines.length ? `<ul class="article-lines">${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
       ${reason ? `<p class="article-why">おすすめの理由：${esc(reason)}</p>` : ''}
-      <p class="article-lens"><small>読む前の問い</small>${esc(lensOf(it.src))}</p>
+      <p class="article-lens"><small>${pod ? '聴く前の問い' : '読む前の問い'}</small>${esc(lensOf(it.src))}</p>
+      ${pod ? `<div class="row pod-links"><a class="btn-line" href="${esc(it.link)}" target="_blank" rel="noopener">Apple Podcastsで聴く</a><a class="btn-line" href="${spotifyUrl(it)}" target="_blank" rel="noopener">Spotifyで探す</a></div>` : ''}
       ${!compact && it.terms.length ? `<div class="row">${it.terms.map(t => `<button class="chip" data-act="show-term" data-id="${esc(t.id)}">${esc(t.t)}</button>`).join('')}</div>` : ''}
       <form class="form form-inline art-take" data-form="art-read" data-id="${esc(it.id)}">
         <input name="take" maxlength="120" placeholder="学びを1行で（なくても記録できます）" aria-label="「${esc(it.title)}」から学んだこと">
-        <button class="btn">読んだ</button>
+        <button class="btn">${pod ? '聴いた' : '読んだ'}</button>
       </form>
       <div class="term-acts">
         <button class="btn-line" data-act="art-idea" data-id="${esc(it.id)}">noteのネタにする</button>
-        <a class="link" href="${claudeUrl(articlePrompt(it))}" target="_blank" rel="noopener">Claudeで要約と確認問題</a>
+        <a class="link" href="${claudeUrl(articlePrompt(it))}" target="_blank" rel="noopener">${pod ? 'Claudeで聴きどころを整理' : 'Claudeで要約と確認問題'}</a>
         ${compact ? '' : `<button class="btn-icon" data-act="art-skip" data-id="${esc(it.id)}">今回は見送る</button>`}
       </div></article>`;
   }
   function feedSlotHtml(mode, s = 'pmbok') {
-    const feed = feeds[s], name = SOURCES[s].name;
+    const feed = feeds[s], name = SOURCES[s].name, unit = SOURCES[s].kind === 'podcast' ? 'エピソード' : '記事';
     if (!feed) {
       return feedState[s] === 'error'
-        ? `<p class="empty">${esc(name)} の記事を読み込めませんでした。電波のよい場所で、もう一度読み込んでください。</p><div class="term-acts"><button class="btn-line" data-act="feed-retry">もう一度読み込む</button></div>`
-        : `<p class="empty">${esc(name)} の記事を読み込んでいます。</p>`;
+        ? `<p class="empty">${esc(name)} の${unit}を読み込めませんでした。電波のよい場所で、もう一度読み込んでください。</p><div class="term-acts"><button class="btn-line" data-act="feed-retry">もう一度読み込む</button></div>`
+        : `<p class="empty">${esc(name)} の${unit}を読み込んでいます。</p>`;
     }
     const recs = recommended(s);
-    if (!recs.length) return `<p class="empty">${esc(name)} の記事はすべて読みました。新しい記事が出たら、ここに表示します。</p>`;
+    if (!recs.length) return `<p class="empty">${esc(name)} の${unit}はすべて見ました。新しい${unit}が出たら、ここに表示します。</p>`;
     if (mode === 'today') return articleCard(recs[0], { compact: true });
     const at = new Date(feed.at);
     return `${recs.slice(0, 6).map(it => `<div class="card hs-l">${articleCard(it)}</div>`).join('')}
@@ -617,7 +666,7 @@
     const done = readToday();
     const sub = done.length >= 2 ? `<a class="link" href="${claudeUrl(linkPrompt(done))}" target="_blank" rel="noopener">今日読んだ${done.length}本をつなげて考える（Claude）</a>`
       : `問いを1つ持って読み、学びを1行残す。今日読んだ記事：${done.length}本`;
-    return bandHtml('今日の読みもの', SRC_IDS.map(s => `<section class="card hs-l read-card">
+    return bandHtml('今日の読みもの・聴きもの', SRC_IDS.map(s => `<section class="card hs-l read-card">
         <p class="read-src">${esc(SOURCES[s].name)}<span>${esc(SOURCES[s].sub)}</span></p>
         <div class="feed-slot" data-mode="today" data-src="${s}">${feedSlotHtml('today', s)}</div></section>`).join(''), sub);
   }
@@ -897,9 +946,8 @@
           ${cardHead('chart', 'この7日間', `${last7}件の記録`)}
           ${barsHtml(7)}
         </section>`)}
-      <div class="today-grid">
-        <div class="col">
-          <section class="card" data-tone="coral">
+      ${bandHtml('主役と学び', `
+          <section class="card hs-xl" data-tone="coral">
             ${cardHead('target', esc(catLabel(MAIN)), '主役')}
             <p class="hand-cap in-card">one step at a time</p>
             ${whyHtml(MAIN)}
@@ -912,18 +960,7 @@
               : '<p class="empty">次の1歩がまだありません。「いつ・どこで・何を」まで決めておくと、動き出しやすくなります。</p>'}
             ${taskForm(MAIN)}
           </section>
-          <section class="card">
-            ${cardHead('spark', 'コーチ', '記録した事実をもとに声をかけます')}
-            <p class="hand-cap in-card">you're doing fine</p>
-            ${weekStrip()}
-            <div class="bubbles" aria-label="きょうのことば">
-              ${lines.map(l => `<div class="bubble-row"><span class="avatar">${icon('spark')}</span><p class="bubble">${esc(l)}</p></div>`).join('')}
-              ${fact ? `<div class="bubble-row"><span class="avatar">${icon('spark')}</span><p class="bubble"><small>思い出してほしい事実</small>${esc(fact)}</p></div>` : ''}
-            </div>
-          </section>
-        </div>
-        <div class="col">
-          <section class="card" data-tone="yellow">
+          <section class="card hs-xl" data-tone="yellow">
             ${cardHead('book', '診断士', '1日1語・1問')}
             ${whyHtml('study')}
             ${word ? `<div class="wod">
@@ -935,14 +972,22 @@
               </div></div>` : ''}
             <div class="qq-slot" data-d="shindan">${qqHtml()}</div>
             <p class="meta qq-foot">${studied ? `今日は${studied}回ふりかえりました。` : ''}<a class="link" href="#/study">用語さがしと計算ふりかえりへ</a></p>
+          </section>`)}
+      ${bandHtml('コーチと発信', `
+          <section class="card hs-xl">
+            ${cardHead('spark', 'コーチ', '記録した事実をもとに声をかけます')}
+            <p class="hand-cap in-card">you're doing fine</p>
+            ${weekStrip()}
+            <div class="bubbles" aria-label="きょうのことば">
+              ${lines.map(l => `<div class="bubble-row"><span class="avatar">${icon('spark')}</span><p class="bubble">${esc(l)}</p></div>`).join('')}
+              ${fact ? `<div class="bubble-row"><span class="avatar">${icon('spark')}</span><p class="bubble"><small>思い出してほしい事実</small>${esc(fact)}</p></div>` : ''}
+            </div>
           </section>
-          <section class="card">
+          <section class="card hs-xl">
             ${cardHead('pen', '発信', '脇役')}
             ${goalRow('note')}${goalRow('music')}
             ${subTasks.length ? `<ul class="tasks">${subTasks.map(taskItem).join('')}</ul>` : ''}
-          </section>
-        </div>
-      </div>
+          </section>`)}
       ${todayReadHtml()}
       <div class="down-wrap">
         <p class="hand-ja">しんどい日は、5分版だけで十分。</p>
@@ -971,7 +1016,7 @@
         ${doneN ? `<p class="meta">公開済み ${doneN}件</p>` : ''}`;
     };
     return `
-      ${pageHead('発信', `ネタを書きとめて、公開まで進めます。note は週${S.goals.note}本、音楽は月${S.goals.music}曲が目安です。読みものは左右にスライドして選び、読んだら「読んだ」で積み上げに残します。`)}
+      ${pageHead('発信', `ネタを書きとめて、公開まで進めます。note は週${S.goals.note}本、音楽は月${S.goals.music}曲が目安です。記事とポッドキャストは左右にスライドして選び、読んだら「読んだ」、聴いたら「聴いた」で積み上げに残します。`)}
       ${SRC_IDS.map(s => `<section class="band">
         <div class="band-head"><h2 class="band-title">${esc(SOURCES[s].name)}</h2><span class="hand-note" aria-hidden="true">swipe →</span><p class="band-sub">${esc(SOURCES[s].sub)}</p>
           <div class="band-nav"><button class="round-mini" data-act="hs" data-dir="-1" aria-label="前へ">‹</button><button class="round-mini" data-act="hs" data-dir="1" aria-label="次へ">›</button></div></div>
@@ -1513,7 +1558,8 @@
         const it = feedItem(f.dataset.id); if (!it) return;
         const take = (d.take || '').trim();
         S.read = { ...S.read, [it.id]: ymd() };
-        addWin('other', `${SOURCES[it.src].name}「${it.title}」を読んだ${take ? `。学び：${take}` : ''}`, { key: `read:${it.id}` });
+        const pod = SOURCES[it.src].kind === 'podcast';
+        addWin('other', `${pod ? `ポッドキャスト「${it.show}」の「${it.title}」を聴いた` : `${SOURCES[it.src].name}「${it.title}」を読んだ`}${take ? `。学び：${take}` : ''}`, { key: `read:${it.id}` });
         render(); break;
       }
       case 'idea':

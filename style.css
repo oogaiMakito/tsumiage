@@ -583,3 +583,10 @@ dialog .close-row { margin-top: 20px; text-align: right; }
 @media (min-width: 900px) { .mindful-card { grid-template-columns: 170px minmax(0, 1fr); gap: 24px; } .mindful-img { width: 170px; height: 212px; } }
 /* マーク（クリーム地の線画）はふちを付けて見せる */
 .brand-mark { box-shadow: 0 0 0 1px var(--rule); background: #faf5ef; }
+/* 中身の多いカード（PMへの道・診断士・コーチ・発信）は帯の中で広めに */
+.hs-xl { width: min(440px, 88vw); }
+@media (min-width: 900px) { .hs-xl { width: 520px; } }
+/* ポッドキャスト */
+.pod-label { font-size: 12px; font-weight: 600; color: var(--sub); margin-bottom: 2px; }
+.pod-links { margin-top: 8px; }
+.pod-links .btn-line { min-height: 34px; padding: 6px 14px; font-size: 12px; }
