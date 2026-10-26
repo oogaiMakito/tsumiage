@@ -1,6 +1,6 @@
 // 画面の部品をキャッシュして、電波がなくても開けるようにする。
-const CACHE = 'mindwalk-v23';
-const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'data.js', 'manifest.webmanifest', 'mindful.jpg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'mindwalk-v24';
+const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'data.js', 'manifest.webmanifest', 'thinking.jpg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

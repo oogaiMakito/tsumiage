@@ -1169,10 +1169,10 @@
       ${pageHead('こころ', '不安は消そうとしなくて大丈夫です。書き出して、分けて、小さな1歩に変えます。', 'Heart', '心')}
       ${careNote()}
       <section class="card mindful-card">
-        <img class="mindful-img" src="mindful.jpg" alt="ごちゃごちゃに絡まった線の頭（MIND FULL）と、ひとつの円に整った頭（MINDFUL）の手描きの絵">
+        <img class="mindful-img" src="thinking.jpg" alt="頭の形の中で、色とりどりの丸が重なり、矢印でつながっていくクレヨン調の絵">
         <div class="mindful-text">
-          <p class="hand-cap big">mind full → mindful</p>
-          <p class="hand-ja big">頭の中がいっぱいのときは、<br>書き出して、分けて、整える。</p>
+          <p class="hand-cap big">write it out, connect the dots</p>
+          <p class="hand-ja big">ばらばらの考えも、書き出して、<br>つなげていけば、形になる。</p>
           <p class="meta">不安メモに1行書く → 「自分でできること」と「手放すこと」に分ける → 小さな1歩にする。</p>
         </div>
       </section>

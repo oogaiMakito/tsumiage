@@ -579,8 +579,8 @@ dialog .close-row { margin-top: 20px; text-align: right; }
 .card .hand-ja { margin-top: 8px; }
 /* こころの挿絵 */
 .mindful-card { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 16px; align-items: center; margin-bottom: 4px; }
-.mindful-img { width: 120px; height: 150px; object-fit: cover; border-radius: 18px; background: #faf5ef; }
-@media (min-width: 900px) { .mindful-card { grid-template-columns: 170px minmax(0, 1fr); gap: 24px; } .mindful-img { width: 170px; height: 212px; } }
+.mindful-img { width: 120px; height: 120px; object-fit: cover; border-radius: 18px; background: #faf5ef; }
+@media (min-width: 900px) { .mindful-card { grid-template-columns: 170px minmax(0, 1fr); gap: 24px; } .mindful-img { width: 170px; height: 170px; } }
 /* マーク（クリーム地の線画）はふちを付けて見せる */
 .brand-mark { box-shadow: 0 0 0 1px var(--rule); background: #faf5ef; }
 /* 中身の多いカード（PMへの道・診断士・コーチ・発信）は帯の中で広めに */
