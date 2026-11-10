@@ -1,7 +1,7 @@
 {
   "name": "Mindwalk",
   "short_name": "Mindwalk",
-  "description": "Mindwalk：思考の散歩。できたことを積み上げて、次の1歩を決めるための自分用ノート",
+  "description": "Mindwalk：思考の散歩。自分の「なぜ」に戻り、今日の一歩を1つだけ決めるための自分用ノート",
   "lang": "ja",
   "start_url": "./#/today",
   "scope": "./",
